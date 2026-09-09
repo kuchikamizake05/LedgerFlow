@@ -72,4 +72,11 @@ public class Account {
     public Instant getCreatedAt() {
         return createdAt;
     }
+        public void debit(BigDecimal amount) {
+        this.currentBalance = this.currentBalance.subtract(amount);
+    }
+
+    public void credit(BigDecimal amount) {
+        this.currentBalance = this.currentBalance.add(amount);
+    }
 }

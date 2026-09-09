@@ -1,6 +1,9 @@
 package ledgerflow_api.account;
 
 import jakarta.validation.Valid;
+import ledgerflow_api.transfer.LedgerEntryResponse;
+import ledgerflow_api.transfer.TransferService;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,9 +15,11 @@ import java.util.UUID;
 @RequestMapping("/api/accounts")
 public class AccountController {
     private final AccountService accountService;
+    private final TransferService transferService;
 
-    public AccountController(AccountService accountService) {
+    public AccountController(AccountService accountService, TransferService transferService) {
         this.accountService = accountService;
+        this.transferService = transferService;
     }
 
     @PostMapping
@@ -31,5 +36,10 @@ public class AccountController {
     @GetMapping
     public List<AccountResponse> getAllAccounts() {
         return accountService.getAllAccounts();
+    }
+
+    @GetMapping("/{id}/statement")
+    public List<LedgerEntryResponse> getAccountStatement(@PathVariable UUID id) {
+        return transferService.getAccountStatement(id);
     }
 }
