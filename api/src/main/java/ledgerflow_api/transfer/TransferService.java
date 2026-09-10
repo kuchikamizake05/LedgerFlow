@@ -26,6 +26,19 @@ public class TransferService {
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.accountRepository = accountRepository;
     }
+    public static final UUID SYSTEM_TREASURY_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+    @Transactional
+    public TransferResponse deposit(UUID targetAccountId, DepositRequest request) {
+        CreateTransferRequest transferRequest = new CreateTransferRequest(
+                SYSTEM_TREASURY_ID,
+                targetAccountId,
+                request.amount(),
+                request.idempotencyKey(),
+                request.description() != null ? request.description() : "Deposit / Top-up"
+        );
+        return executeTransfer(transferRequest);
+    }
 
     @Transactional
     public TransferResponse executeTransfer(CreateTransferRequest request) {

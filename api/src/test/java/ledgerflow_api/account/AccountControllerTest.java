@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -111,5 +112,32 @@ class AccountControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Account not found"));
+    }
+
+    @Test
+    void shouldDepositToAccountSuccessfully() throws Exception {
+        Account account = accountRepository.save(new Account("Deposit Target", AccountType.EWALLET, new BigDecimal("10000.00")));
+
+        String idempotencyKey = "dep-test-" + UUID.randomUUID();
+        String payload = """
+                {
+                    "amount": 50000.00,
+                    "idempotencyKey": "%s",
+                    "description": "Top-up balance"
+                }
+                """.formatted(idempotencyKey);
+
+        mockMvc.perform(post("/api/accounts/" + account.getId() + "/deposits")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.sourceAccountId").value("00000000-0000-0000-0000-000000000001"))
+                .andExpect(jsonPath("$.targetAccountId").value(account.getId().toString()))
+                .andExpect(jsonPath("$.amount").value(50000.0))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        Account updatedAccount = accountRepository.findById(account.getId()).orElseThrow();
+        assertThat(updatedAccount.getCurrentBalance()).isEqualByComparingTo("60000.00");
     }
 }

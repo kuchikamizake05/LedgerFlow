@@ -50,15 +50,16 @@ BigDecimal("100000.00")));
         Account target = accountRepository.save(new Account("Receiver", AccountType.BANK,
 new BigDecimal("0.00")));
 
+        String idempotencyKey = "tx-" + java.util.UUID.randomUUID();
         String payload = """
                 {
                     "sourceAccountId": "%s",
                     "targetAccountId": "%s",
                     "amount": 30000.00,
-                    "idempotencyKey": "unique-tx-001",
+                    "idempotencyKey": "%s",
                     "description": "Payment for lunch"
                 }
-                """.formatted(source.getId(), target.getId());
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
 
         mockMvc.perform(post("/api/transfers")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -75,7 +76,8 @@ new BigDecimal("0.00")));
         assertThat(updatedTarget.getCurrentBalance()).isEqualByComparingTo("30000.00");
 
         // Verifikasi entri ledger berpasangan (Double-Entry)
-        List<LedgerEntry> entries = ledgerEntryRepository.findAll();
+        Transfer transfer = transferRepository.findByIdempotencyKey(idempotencyKey).orElseThrow();
+        List<LedgerEntry> entries = ledgerEntryRepository.findByTransferId(transfer.getId());
         assertThat(entries).hasSize(2);
 
         LedgerEntry debit = entries.stream().filter(e -> e.getDirection() ==
@@ -96,15 +98,16 @@ BigDecimal("100000.00")));
         Account target = accountRepository.save(new Account("Receiver", AccountType.BANK,
 new BigDecimal("0.00")));
 
+        String idempotencyKey = "same-key-" + java.util.UUID.randomUUID();
         String payload = """
                 {
                     "sourceAccountId": "%s",
                     "targetAccountId": "%s",
                     "amount": 25000.00,
-                    "idempotencyKey": "same-key-123",
+                    "idempotencyKey": "%s",
                     "description": "First attempt"
                 }
-                """.formatted(source.getId(), target.getId());
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
 
         // Request 1
         mockMvc.perform(post("/api/transfers")
@@ -130,15 +133,16 @@ BigDecimal("10000.00")));
         Account target = accountRepository.save(new Account("Receiver", AccountType.BANK,
 new BigDecimal("0.00")));
 
+        String idempotencyKey = "insufficient-" + java.util.UUID.randomUUID();
         String payload = """
                 {
                     "sourceAccountId": "%s",
                     "targetAccountId": "%s",
                     "amount": 50000.00,
-                    "idempotencyKey": "tx-overspend",
+                    "idempotencyKey": "%s",
                     "description": "Overspend attempt"
                 }
-                """.formatted(source.getId(), target.getId());
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
 
         mockMvc.perform(post("/api/transfers")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -161,7 +165,7 @@ new BigDecimal("0.00")));
                 source.getId(),
                 target.getId(),
                 new BigDecimal("25000.00"),
-                "idemp-get-test",
+                "idemp-get-" + java.util.UUID.randomUUID(),
                 "Payment"
         ));
 
@@ -193,6 +197,9 @@ new BigDecimal("0.00")));
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
 
+        String key1 = "conc-1-" + java.util.UUID.randomUUID();
+        String key2 = "conc-2-" + java.util.UUID.randomUUID();
+
         Runnable task1 = () -> {
             readyLatch.countDown();
             try {
@@ -202,10 +209,10 @@ new BigDecimal("0.00")));
                             "sourceAccountId": "%s",
                             "targetAccountId": "%s",
                             "amount": 80000.00,
-                            "idempotencyKey": "conc-1",
+                            "idempotencyKey": "%s",
                             "description": "Concurrent 1"
                         }
-                        """, source.getId(), target.getId());
+                        """, source.getId(), target.getId(), key1);
                 int status = mockMvc.perform(post("/api/transfers")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(payload))
@@ -226,10 +233,10 @@ new BigDecimal("0.00")));
                             "sourceAccountId": "%s",
                             "targetAccountId": "%s",
                             "amount": 80000.00,
-                            "idempotencyKey": "conc-2",
+                            "idempotencyKey": "%s",
                             "description": "Concurrent 2"
                         }
-                        """, source.getId(), target.getId());
+                        """, source.getId(), target.getId(), key2);
                 int status = mockMvc.perform(post("/api/transfers")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(payload))

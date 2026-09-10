@@ -3,6 +3,8 @@ package ledgerflow_api.account;
 import jakarta.validation.Valid;
 import ledgerflow_api.transfer.LedgerEntryResponse;
 import ledgerflow_api.transfer.TransferService;
+import ledgerflow_api.transfer.DepositRequest;
+import ledgerflow_api.transfer.TransferResponse;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,5 +43,14 @@ public class AccountController {
     @GetMapping("/{id}/statement")
     public List<LedgerEntryResponse> getAccountStatement(@PathVariable UUID id) {
         return transferService.getAccountStatement(id);
+    }
+
+    @PostMapping("/{id}/deposits")
+    public ResponseEntity<TransferResponse> deposit(
+            @PathVariable UUID id,
+            @Valid @RequestBody DepositRequest request
+    ) {
+        TransferResponse response = transferService.deposit(id, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
