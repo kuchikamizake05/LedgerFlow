@@ -21,14 +21,18 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import ledgerflow_api.account.Account;
 import ledgerflow_api.account.AccountRepository;
 import ledgerflow_api.account.AccountType;
+import ledgerflow_api.TestcontainersConfiguration;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
+@Import(TestcontainersConfiguration.class)
 class TransferControllerTest {
 
     @Autowired
@@ -42,6 +46,32 @@ class TransferControllerTest {
 
     @Autowired
     private LedgerEntryRepository ledgerEntryRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Test
+    void shouldCreateIndexForAccountStatementLookup() {
+        String indexDefinition = jdbcTemplate.queryForObject("""
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = 'idx_ledger_entries_account_created_at'
+                """, String.class);
+
+        assertThat(indexDefinition).contains("account_id, created_at DESC");
+    }
+
+    @Test
+    void shouldCreateApplicationUsersTable() {
+        Integer tableCount = jdbcTemplate.queryForObject("""
+                SELECT count(*)
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'app_users'
+                """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(1);
+    }
 
     @Test
     void shouldExecuteTransferSuccessfully() throws Exception {
@@ -77,7 +107,7 @@ new BigDecimal("0.00")));
 
         // Verifikasi entri ledger berpasangan (Double-Entry)
         Transfer transfer = transferRepository.findByIdempotencyKey(idempotencyKey).orElseThrow();
-        List<LedgerEntry> entries = ledgerEntryRepository.findByTransferId(transfer.getId());
+        List<LedgerEntry> entries = ledgerEntryRepository.findByTransferIdOrderByCreatedAtAsc(transfer.getId());
         assertThat(entries).hasSize(2);
 
         LedgerEntry debit = entries.stream().filter(e -> e.getDirection() ==
@@ -89,6 +119,43 @@ LedgerDirection.CREDIT).findFirst().orElseThrow();
         assertThat(debit.getAmount()).isEqualByComparingTo("30000.00");
         assertThat(credit.getAccountId()).isEqualTo(target.getId());
         assertThat(credit.getAmount()).isEqualByComparingTo("30000.00");
+    }
+
+    @Test
+    void shouldReturnTheBalancedJournalPostingsForATransfer() throws Exception {
+        Account source = accountRepository.save(new Account("Journal Sender", AccountType.BANK, new BigDecimal("100000.00")));
+        Account target = accountRepository.save(new Account("Journal Receiver", AccountType.CASH, new BigDecimal("0.00")));
+        String idempotencyKey = "journal-entries-" + java.util.UUID.randomUUID();
+        String payload = """
+                {
+                    "sourceAccountId": "%s",
+                    "targetAccountId": "%s",
+                    "amount": 30000.00,
+                    "idempotencyKey": "%s",
+                    "description": "Journal detail test"
+                }
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
+
+        mockMvc.perform(post("/api/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated());
+
+        Transfer transfer = transferRepository.findByIdempotencyKey(idempotencyKey).orElseThrow();
+        mockMvc.perform(get("/api/transfers/" + transfer.getId() + "/entries"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[?(@.direction == 'DEBIT')].accountId").value(source.getId().toString()))
+                .andExpect(jsonPath("$[?(@.direction == 'CREDIT')].accountId").value(target.getId().toString()))
+                .andExpect(jsonPath("$[?(@.direction == 'DEBIT')].amount").value(30000.00))
+                .andExpect(jsonPath("$[?(@.direction == 'CREDIT')].amount").value(30000.00));
+    }
+
+    @Test
+    void shouldReturn404WhenJournalTransferDoesNotExist() throws Exception {
+        mockMvc.perform(get("/api/transfers/00000000-0000-0000-0000-000000000000/entries"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Transfer not found"));
     }
 
     @Test
@@ -119,9 +186,49 @@ new BigDecimal("0.00")));
         mockMvc.perform(post("/api/transfers")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
-                .andExpect(status().isCreated());
+                .andExpect(status().isOk());
 
         // Saldo hanya terpotong satu kali (25.000, bukan 50.000)
+        Account updatedSource = accountRepository.findById(source.getId()).orElseThrow();
+        assertThat(updatedSource.getCurrentBalance()).isEqualByComparingTo("75000.00");
+    }
+
+    @Test
+    void shouldRejectIdempotencyKeyWhenPayloadDiffers() throws Exception {
+        Account source = accountRepository.save(new Account("Sender", AccountType.BANK, new BigDecimal("100000.00")));
+        Account target = accountRepository.save(new Account("Receiver", AccountType.BANK, new BigDecimal("0.00")));
+
+        String idempotencyKey = "payload-conflict-" + java.util.UUID.randomUUID();
+        String firstPayload = """
+                {
+                    "sourceAccountId": "%s",
+                    "targetAccountId": "%s",
+                    "amount": 25000.00,
+                    "idempotencyKey": "%s",
+                    "description": "First attempt"
+                }
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
+        String changedPayload = """
+                {
+                    "sourceAccountId": "%s",
+                    "targetAccountId": "%s",
+                    "amount": 50000.00,
+                    "idempotencyKey": "%s",
+                    "description": "Different amount"
+                }
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
+
+        mockMvc.perform(post("/api/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(firstPayload))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(changedPayload))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409));
+
         Account updatedSource = accountRepository.findById(source.getId()).orElseThrow();
         assertThat(updatedSource.getCurrentBalance()).isEqualByComparingTo("75000.00");
     }
@@ -182,6 +289,76 @@ new BigDecimal("0.00")));
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Transfer not found"));
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void shouldReplayConcurrentRequestsWithTheSameIdempotencyKey() throws Exception {
+        Account source = accountRepository.saveAndFlush(new Account("Idempotent Source", AccountType.BANK,
+                new BigDecimal("100000.00")));
+        Account target = accountRepository.saveAndFlush(new Account("Idempotent Target", AccountType.CASH,
+                new BigDecimal("0.00")));
+
+        String idempotencyKey = "concurrent-same-key-" + java.util.UUID.randomUUID();
+        String payload = """
+                {
+                    "sourceAccountId": "%s",
+                    "targetAccountId": "%s",
+                    "amount": 25000.00,
+                    "idempotencyKey": "%s",
+                    "description": "A retried request"
+                }
+                """.formatted(source.getId(), target.getId(), idempotencyKey);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch readyLatch = new CountDownLatch(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        AtomicInteger createdCount = new AtomicInteger();
+        AtomicInteger replayCount = new AtomicInteger();
+        AtomicInteger unexpectedCount = new AtomicInteger();
+
+        Runnable requestTask = () -> {
+            readyLatch.countDown();
+            try {
+                startLatch.await();
+                int responseStatus = mockMvc.perform(post("/api/transfers")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(payload))
+                        .andReturn()
+                        .getResponse()
+                        .getStatus();
+
+                if (responseStatus == 201) {
+                    createdCount.incrementAndGet();
+                } else if (responseStatus == 200) {
+                    replayCount.incrementAndGet();
+                } else {
+                    unexpectedCount.incrementAndGet();
+                }
+            } catch (Exception exception) {
+                unexpectedCount.incrementAndGet();
+            }
+        };
+
+        Future<?> firstRequest = executor.submit(requestTask);
+        Future<?> secondRequest = executor.submit(requestTask);
+        readyLatch.await();
+        startLatch.countDown();
+        firstRequest.get();
+        secondRequest.get();
+        executor.shutdown();
+
+        assertThat(createdCount.get()).isEqualTo(1);
+        assertThat(replayCount.get()).isEqualTo(1);
+        assertThat(unexpectedCount.get()).isZero();
+
+        Account updatedSource = accountRepository.findById(source.getId()).orElseThrow();
+        Account updatedTarget = accountRepository.findById(target.getId()).orElseThrow();
+        assertThat(updatedSource.getCurrentBalance()).isEqualByComparingTo("75000.00");
+        assertThat(updatedTarget.getCurrentBalance()).isEqualByComparingTo("25000.00");
+
+        Transfer transfer = transferRepository.findByIdempotencyKey(idempotencyKey).orElseThrow();
+        assertThat(ledgerEntryRepository.findByTransferIdOrderByCreatedAtAsc(transfer.getId())).hasSize(2);
     }
 
     @Test

@@ -15,8 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException
-ex) {
+    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new HashMap<>();
         for (FieldError error : ex.getBindingResult().getFieldErrors()) {
             fieldErrors.put(error.getField(), error.getDefaultMessage());
@@ -26,8 +25,7 @@ ex) {
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
                 "Validation failed",
-                fieldErrors
-        );
+                fieldErrors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
@@ -37,8 +35,7 @@ ex) {
         ErrorResponse body = ErrorResponse.of(
                 status.value(),
                 status.getReasonPhrase(),
-                ex.getReason()
-        );
+                ex.getReason());
         return ResponseEntity.status(status).body(body);
     }
 }

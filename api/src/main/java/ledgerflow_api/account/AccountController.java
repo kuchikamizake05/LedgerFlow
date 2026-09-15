@@ -2,15 +2,19 @@ package ledgerflow_api.account;
 
 import jakarta.validation.Valid;
 import ledgerflow_api.transfer.LedgerEntryResponse;
+import ledgerflow_api.transfer.LedgerDirection;
 import ledgerflow_api.transfer.TransferService;
 import ledgerflow_api.transfer.DepositRequest;
 import ledgerflow_api.transfer.TransferResponse;
+import ledgerflow_api.common.PageResponse;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
@@ -41,8 +45,16 @@ public class AccountController {
     }
 
     @GetMapping("/{id}/statement")
-    public List<LedgerEntryResponse> getAccountStatement(@PathVariable UUID id) {
-        return transferService.getAccountStatement(id);
+    public PageResponse<LedgerEntryResponse> getAccountStatement(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) LedgerDirection direction,
+            @RequestParam(required = false) UUID transferId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return transferService.getAccountStatement(id, page, size, direction, transferId, from, to);
     }
 
     @PostMapping("/{id}/deposits")

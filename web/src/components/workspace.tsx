@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -19,6 +20,24 @@ import {
   demoEntries,
   demoTransfers,
 } from "@/lib/domain";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Store = {
   mode: "demo" | "live";
@@ -36,6 +55,10 @@ type Store = {
     data: Omit<Transfer, "id" | "status" | "createdAt">,
     deposit: boolean,
   ) => Promise<Transfer>;
+};
+type SessionUser = {
+  email: string;
+  role: "AUDITOR" | "OPERATOR" | "TREASURY_ADMIN";
 };
 const Context = createContext<Store | null>(null);
 export function useWorkspace() {
@@ -76,6 +99,7 @@ export function Icon({ name }: { name: string }) {
 }
 export function Workspace({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mode, setMode] = useState<"demo" | "live">("demo");
   const [accounts, setAccounts] = useState(demoAccounts);
   const [entries, setEntries] = useState<Entry[]>(demoEntries);
@@ -84,7 +108,23 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   const [checked, setChecked] = useState<string>();
   const [mobile, setMobile] = useState(false);
+  const [pendingLiveMode, setPendingLiveMode] = useState(false);
+  const [session, setSession] = useState<SessionUser | null>(null);
   const generation = useRef(0);
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/auth/session", { cache: "no-store" })
+      .then(async (response) => (response.ok ? ((await response.json()) as SessionUser) : null))
+      .then((user) => {
+        if (active) setSession(user);
+      })
+      .catch(() => {
+        if (active) setSession(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const refresh = useCallback(async () => {
     if (mode === "demo") {
       setChecked(new Date().toISOString());
@@ -219,6 +259,11 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     ]);
     return result;
   }
+  async function signOut() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/auth/login");
+    router.refresh();
+  }
   return (
     <Context.Provider
       value={{
@@ -288,27 +333,52 @@ export function Workspace({ children }: { children: React.ReactNode }) {
           <div className="inline">
             <label className="mode-label">
               Data{" "}
-              <select
-                aria-label="Data source"
+              <Select
+                items={[
+                  { value: "demo", label: "Demo preview" },
+                  { value: "live", label: "Local API" },
+                ]}
                 disabled={loading}
                 value={mode}
-                onChange={(e) =>
-                  void changeMode(e.target.value as "demo" | "live")
-                }
+                onValueChange={(value) => {
+                  const nextMode = value as "demo" | "live";
+                  if (nextMode === "live" && mode !== "live") {
+                    setPendingLiveMode(true);
+                    return;
+                  }
+                  void changeMode(nextMode);
+                }}
               >
-                <option value="demo">Demo preview</option>
-                <option value="live">Local API</option>
-              </select>
+                <SelectTrigger className="mode-select" aria-label="Data source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="ledgerflow-select">
+                  <SelectGroup>
+                    <SelectItem value="demo">Demo preview</SelectItem>
+                    <SelectItem value="live">Local API</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </label>
             <span className="badge">SANDBOX</span>
-            <span className="avatar">OP</span>
+            {session && (
+              <>
+                <span className="badge">{session.role}</span>
+                <button className="sign-out" onClick={() => void signOut()}>
+                  Sign out
+                </button>
+                <span className="avatar" title={session.email}>
+                  {session.email.slice(0, 2).toUpperCase()}
+                </span>
+              </>
+            )}
           </div>
         </header>
         <main id="main" key={mode} className="content">
           <div className="mode-note">
             {mode === "demo"
               ? "DEMO DATA · Synthetic accounts. Changes stay in this session and reset on reload or mode switch."
-              : "LOCAL API · Connected operations modify your development database. Authentication is not configured."}
+              : "LOCAL API · Connected operations modify your development database. Actions follow the permissions of your signed-in role."}
           </div>
           {children}
         </main>
@@ -319,6 +389,31 @@ export function Workspace({ children }: { children: React.ReactNode }) {
             <span className="dot" /> IDR · Asia/Jakarta
           </span>
         </footer>
+        <AlertDialog
+          open={pendingLiveMode}
+          onOpenChange={(open) => setPendingLiveMode(open)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Connect to Local API?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Transfers, allocations, and account creation will write to your
+                local development database. Your signed-in role determines which operations are permitted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Stay in demo</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setPendingLiveMode(false);
+                  void changeMode("live");
+                }}
+              >
+                Continue to Local API
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Context.Provider>
   );

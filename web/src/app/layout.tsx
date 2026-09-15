@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
-import { Workspace } from "@/components/workspace";
+import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 const geistSans = IBM_Plex_Sans({
@@ -25,7 +25,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body>
-        <Workspace>{children}</Workspace>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

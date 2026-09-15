@@ -1,16 +1,25 @@
 package ledgerflow_api.transfer;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import java.util.Optional;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import ledgerflow_api.account.Account;
 import ledgerflow_api.account.AccountRepository;
+import ledgerflow_api.common.PageResponse;
 
 @Service
 public class TransferService {
@@ -37,15 +46,16 @@ public class TransferService {
                 request.idempotencyKey(),
                 request.description() != null ? request.description() : "Deposit / Top-up"
         );
-        return executeTransfer(transferRequest);
+        return executeTransfer(transferRequest).transfer();
     }
 
     @Transactional
-    public TransferResponse executeTransfer(CreateTransferRequest request) {
-        // 1. Idempotency Check: Jika key sudah ada, return response lama
+    public TransferExecutionResult executeTransfer(CreateTransferRequest request) {
+        // 1. Idempotency check: key yang sama hanya boleh dipakai untuk payload yang sama.
         Optional<Transfer> existing = transferRepository.findByIdempotencyKey(request.idempotencyKey());
         if (existing.isPresent()) {
-            return TransferResponse.from(existing.get());
+            validateMatchingIdempotencyPayload(existing.get(), request);
+            return new TransferExecutionResult(TransferResponse.from(existing.get()), true);
         }
 
         // 2. Cegah transfer ke akun sendiri
@@ -105,18 +115,77 @@ public class TransferService {
         ledgerEntryRepository.save(debitEntry);
         ledgerEntryRepository.save(creditEntry);
 
-        return TransferResponse.from(savedTransfer);
+        return new TransferExecutionResult(TransferResponse.from(savedTransfer), false);
+    }
+
+    private void validateMatchingIdempotencyPayload(Transfer existing, CreateTransferRequest request) {
+        boolean matches = existing.getSourceAccountId().equals(request.sourceAccountId())
+                && existing.getTargetAccountId().equals(request.targetAccountId())
+                && existing.getAmount().compareTo(request.amount()) == 0
+                && Objects.equals(existing.getDescription(), request.description());
+
+        if (!matches) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Idempotency key was already used for a different transfer");
+        }
     }
 
     @Transactional(readOnly = true)
-    public List<LedgerEntryResponse> getAccountStatement(UUID accountId) {
+    public Optional<TransferExecutionResult> findReplayAfterDuplicateKey(CreateTransferRequest request) {
+        return transferRepository.findByIdempotencyKey(request.idempotencyKey())
+                .map(existing -> {
+                    validateMatchingIdempotencyPayload(existing, request);
+                    return new TransferExecutionResult(TransferResponse.from(existing), true);
+                });
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<LedgerEntryResponse> getAccountStatement(
+            UUID accountId,
+            int page,
+            int size,
+            LedgerDirection direction,
+            UUID transferId,
+            LocalDate from,
+            LocalDate to) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Page must be zero or greater and size must be between 1 and 100");
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "From date must be on or before to date");
+        }
         if (!accountRepository.existsById(accountId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found");
         }
-        return ledgerEntryRepository.findByAccountIdOrderByCreatedAtDesc(accountId)
-                .stream()
-                .map(LedgerEntryResponse::from)
-                .toList();
+
+        ZoneId jakarta = ZoneId.of("Asia/Jakarta");
+        Instant fromTimestamp = from == null ? null : from.atStartOfDay(jakarta).toInstant();
+        Instant toTimestampExclusive = to == null ? null : to.plusDays(1).atStartOfDay(jakarta).toInstant();
+        Specification<LedgerEntry> statement = (root, criteriaQuery, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("accountId"), accountId);
+        if (direction != null) {
+            statement = statement.and((root, criteriaQuery, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("direction"), direction));
+        }
+        if (transferId != null) {
+            statement = statement.and((root, criteriaQuery, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("transferId"), transferId));
+        }
+        if (fromTimestamp != null) {
+            statement = statement.and((root, criteriaQuery, criteriaBuilder) ->
+                    criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), fromTimestamp));
+        }
+        if (toTimestampExclusive != null) {
+            statement = statement.and((root, criteriaQuery, criteriaBuilder) ->
+                    criteriaBuilder.lessThan(root.get("createdAt"), toTimestampExclusive));
+        }
+
+        Page<LedgerEntryResponse> statementPage = ledgerEntryRepository
+                .findAll(statement, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")))
+                .map(LedgerEntryResponse::from);
+        return PageResponse.from(statementPage);
     }
 
     @Transactional(readOnly = true)
@@ -125,5 +194,16 @@ public class TransferService {
                 .map(TransferResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Transfer not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LedgerEntryResponse> getTransferEntries(UUID transferId) {
+        if (!transferRepository.existsById(transferId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Transfer not found");
+        }
+        return ledgerEntryRepository.findByTransferIdOrderByCreatedAtAsc(transferId)
+                .stream()
+                .map(LedgerEntryResponse::from)
+                .toList();
     }
 }

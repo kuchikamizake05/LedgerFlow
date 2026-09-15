@@ -2,11 +2,37 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
-import { Transfer, TREASURY, cents, money, shortId, stamp } from "@/lib/domain";
+import {
+  ApiError,
+  Transfer,
+  TREASURY,
+  cents,
+  money,
+  shortId,
+  stamp,
+} from "@/lib/domain";
 import { useWorkspace, Icon } from "./workspace";
 import { Copy, Empty, Modal, Notice, PageHeading } from "./ui";
+import { useFeedback } from "./feedback";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
   const store = useWorkspace();
+  const { notify } = useFeedback();
   const params = useSearchParams();
   const [source, setSource] = useState(
     deposit ? TREASURY : params.get("account") || "",
@@ -26,6 +52,9 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
   const submitting = useRef(false);
   const from = store.accounts.find((a) => a.id === source);
   const to = store.accounts.find((a) => a.id === target);
+  const targetOptions = store.accounts
+    .filter((a) => a.id !== TREASURY && a.id !== source)
+    .map((a) => ({ value: a.id, label: a.name }));
   let parsed = BigInt(0);
   try {
     parsed = cents(amount);
@@ -59,9 +88,24 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
       setReceipt(result);
       setReview(false);
       setUnknown(false);
+      notify({
+        type: "success",
+        title: deposit ? "Allocation completed" : "Transfer completed",
+        description: `${money(result.amount)} · ${shortId(result.id)}`,
+      });
     } catch (e) {
-      setError((e as Error).message);
-      if (store.mode === "live") setUnknown(true);
+      const message = (e as Error).message;
+      setError(message);
+      notify({
+        type: "error",
+        title: deposit ? "Allocation failed" : "Transfer failed",
+        description: message,
+      });
+      if (
+        store.mode === "live" &&
+        (!(e instanceof ApiError) || e.status >= 500)
+      )
+        setUnknown(true);
     } finally {
       setBusy(false);
       submitting.current = false;
@@ -91,7 +135,51 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
           </button>
         </div>
       )}
-      {lab ? (
+      {receipt ? (
+        <section className="completion panel">
+          <span className="status good">
+            {store.mode === "demo" ? "SIMULATION COMPLETED" : receipt.status}
+          </span>
+          <h2>{deposit ? "Allocation completed" : "Transfer completed"}</h2>
+          <strong className="money-large">{money(receipt.amount)}</strong>
+          <p className="muted">
+            The server accepted the movement and revalidated both balances.
+          </p>
+          <dl className="detail-list completion-details">
+            <dt>From</dt>
+            <dd>
+              {store.accounts.find((a) => a.id === receipt.sourceAccountId)
+                ?.name || shortId(receipt.sourceAccountId)}
+            </dd>
+            <dt>To</dt>
+            <dd>
+              {store.accounts.find((a) => a.id === receipt.targetAccountId)
+                ?.name || shortId(receipt.targetAccountId)}
+            </dd>
+            <dt>Transfer ID</dt>
+            <dd className="mono">
+              {receipt.id}
+              <Copy value={receipt.id} />
+            </dd>
+            <dt>Reference</dt>
+            <dd className="mono">
+              {receipt.idempotencyKey}
+              <Copy value={receipt.idempotencyKey} />
+            </dd>
+            <dt>Recorded</dt>
+            <dd>{stamp(receipt.createdAt)}</dd>
+          </dl>
+          <div className="inline">
+            <Link
+              className="button"
+              href={`/ledger?account=${receipt.sourceAccountId}&transaction=${receipt.id}`}
+            >
+              View journal
+            </Link>
+            <button onClick={reset}>New operation</button>
+          </div>
+        </section>
+      ) : lab ? (
         <section className="panel">
           <Empty title="Concurrency lab — not enabled">
             This screen is reserved for isolated test accounts. No load test or
@@ -160,7 +248,13 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                     if (!key) setKey(crypto.randomUUID());
                     setReview(true);
                   } catch (e) {
-                    setError((e as Error).message);
+                    const message = (e as Error).message;
+                    setError(message);
+                    notify({
+                      type: "error",
+                      title: "Check the transfer details",
+                      description: message,
+                    });
                   }
                 }}
               >
@@ -168,20 +262,28 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                   {!deposit && (
                     <label>
                       Source account
-                      <select
-                        required
-                        value={source}
-                        onChange={(e) => setSource(e.target.value)}
-                      >
-                        <option value="">Select source account</option>
-                        {store.accounts
+                      <Select
+                        items={store.accounts
                           .filter((a) => a.id !== TREASURY)
-                          .map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.name}
-                            </option>
-                          ))}
-                      </select>
+                          .map((a) => ({ value: a.id, label: a.name }))}
+                        value={source}
+                        onValueChange={(value) => setSource(value || "")}
+                      >
+                        <SelectTrigger aria-label="Source account">
+                          <SelectValue placeholder="Select source account" />
+                        </SelectTrigger>
+                        <SelectContent className="ledgerflow-select">
+                          <SelectGroup>
+                            {store.accounts
+                              .filter((a) => a.id !== TREASURY)
+                              .map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                       <small>
                         {from
                           ? `Current balance: ${money(from.currentBalance)}`
@@ -191,22 +293,30 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                   )}
                   <label>
                     {deposit ? "Target account" : "Destination account"}
-                    <input
-                      list="target-accounts"
-                      required
-                      placeholder="Paste account UUID or choose an account"
+                    <Combobox
+                      items={targetOptions}
                       value={target}
-                      onChange={(e) => setTarget(e.target.value)}
-                    />
-                    <datalist id="target-accounts">
-                      {store.accounts
-                        .filter((a) => a.id !== TREASURY && a.id !== source)
-                        .map((a) => (
-                          <option value={a.id} key={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                    </datalist>
+                      inputValue={target}
+                      onInputValueChange={setTarget}
+                      onValueChange={(value) => setTarget(value || "")}
+                    >
+                      <ComboboxInput
+                        aria-label={
+                          deposit ? "Target account" : "Destination account"
+                        }
+                        placeholder="Paste account UUID or choose an account"
+                      />
+                      <ComboboxContent className="ledgerflow-select">
+                        <ComboboxEmpty>No matching account.</ComboboxEmpty>
+                        <ComboboxList>
+                          {(item) => (
+                            <ComboboxItem key={item.value} value={item.value}>
+                              {item.label}
+                            </ComboboxItem>
+                          )}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
                     <small>
                       {to
                         ? `${to.name} · ${money(to.currentBalance)}`
@@ -355,31 +465,6 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                 Retry unchanged request
               </button>
             </Notice>
-          )}
-          {receipt && (
-            <section className="receipt panel">
-              <span className="status good">
-                {store.mode === "demo"
-                  ? "Simulation completed"
-                  : receipt.status}
-              </span>
-              <h2>{deposit ? "Allocation" : "Transfer"} receipt</h2>
-              <strong className="money-large">{money(receipt.amount)}</strong>
-              <p className="mono">
-                {receipt.id}
-                <Copy value={receipt.id} />
-              </p>
-              <p>{stamp(receipt.createdAt)}</p>
-              <div className="inline">
-                <Link
-                  className="button"
-                  href={`/ledger?account=${receipt.sourceAccountId}&transaction=${receipt.id}`}
-                >
-                  View journal
-                </Link>
-                <button onClick={reset}>New operation</button>
-              </div>
-            </section>
           )}
           {deposit && (
             <section className="panel recent">

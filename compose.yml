@@ -28,6 +28,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ledgerflow
       SPRING_DATASOURCE_USERNAME: ledgerflow
       SPRING_DATASOURCE_PASSWORD: ledgerflow_local_dev
+      LEDGERFLOW_JWT_SECRET: ${LEDGERFLOW_JWT_SECRET:?Set LEDGERFLOW_JWT_SECRET in your environment or .env file}
       SERVER_PORT: 8081
     ports:
       - "8081:8081"

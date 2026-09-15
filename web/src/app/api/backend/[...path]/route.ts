@@ -6,7 +6,7 @@ async function forward(
 ) {
   const path = (await context.params).path.join("/");
   const read = new RegExp(
-    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}|health)$`,
+    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|auth/me|health)$`,
   );
   const write = new RegExp(`^(accounts|transfers|accounts/${uuid}/deposits)$`);
   if (!(request.method === "GET" ? read : write).test(path))
@@ -14,7 +14,6 @@ async function forward(
       { message: "Endpoint not supported." },
       { status: 404 },
     );
-  // Development adapter only: the current Spring service has no authentication.
   if (
     request.method === "POST" &&
     request.headers.get("origin") !== request.nextUrl.origin
@@ -35,7 +34,14 @@ async function forward(
       `${base}${path === "health" ? "/actuator/health" : `/api/${path}`}`,
       {
         method: request.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(request.cookies.get("ledgerflow_access_token")?.value
+            ? {
+                Authorization: `Bearer ${request.cookies.get("ledgerflow_access_token")?.value}`,
+              }
+            : {}),
+        },
         body,
         signal: AbortSignal.timeout(12000),
         cache: "no-store",

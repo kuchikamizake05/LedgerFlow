@@ -14,6 +14,14 @@ export type Entry = {
   amount: string;
   createdAt: string;
 };
+export type PageResponse<T> = {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+};
 export type Transfer = {
   id: string;
   sourceAccountId: string;
@@ -55,6 +63,15 @@ export function stamp(value?: string) {
     : "Not checked";
 }
 export const shortId = (id: string) => `${id.slice(0, 8)}…${id.slice(-4)}`;
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 const names: [string, Account["type"], string][] = [
   ["BCA Corporate Primary Operating Vault", "BANK", "2450000000"],
   ["Mandiri Operational Settlement Escrow", "BANK", "1180500000"],
@@ -129,8 +146,9 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   });
   const result = await response.json();
   if (!response.ok)
-    throw new Error(
+    throw new ApiError(
       result.message || "Request failed. Check the API and try again.",
+      response.status,
     );
   return result as T;
 }

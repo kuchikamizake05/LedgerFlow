@@ -1,6 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./workspace";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 export function PageHeading({
   title,
   description,
@@ -54,22 +59,24 @@ export function Empty({
 export function Copy({ value }: { value: string }) {
   const [message, setMessage] = useState("");
   return (
-    <button
-      className="copy"
-      title={value}
-      aria-label={`Copy ${value}`}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setMessage("Copied");
-        } catch {
-          setMessage("Copy unavailable");
-        }
-      }}
-    >
-      <Icon name="copy" />
-      <span role="status">{message}</span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        className="copy"
+        aria-label={`Copy ${value}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            setMessage("Copied");
+          } catch {
+            setMessage("Copy unavailable");
+          }
+        }}
+      >
+        <Icon name="copy" />
+        <span role="status">{message}</span>
+      </TooltipTrigger>
+      <TooltipContent>{message || "Copy identifier"}</TooltipContent>
+    </Tooltip>
   );
 }
 export function Modal({

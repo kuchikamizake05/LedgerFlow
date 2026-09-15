@@ -1,0 +1,3 @@
+.env
+*.dev.out.log
+*.dev.err.log

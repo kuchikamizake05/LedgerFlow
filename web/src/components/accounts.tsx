@@ -4,8 +4,32 @@ import { useState } from "react";
 import { Account, TREASURY, cents, money, shortId, stamp } from "@/lib/domain";
 import { Icon, useWorkspace } from "./workspace";
 import { Copy, Empty, Modal, Notice, PageHeading } from "./ui";
+import { useFeedback } from "./feedback";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 export function AccountsPage() {
   const store = useWorkspace();
+  const { notify } = useFeedback();
   const [query, setQuery] = useState("");
   const [type, setType] = useState("");
   const [sort, setSort] = useState(false);
@@ -45,9 +69,14 @@ export function AccountsPage() {
         <div>
           <small>ACCOUNT BALANCES</small>
           <strong>
-            {unavailable ? "Unavailable" : money(
-              accounts.reduce((n, a) => n + cents(a.currentBalance), BigInt(0)),
-            )}
+            {unavailable
+              ? "Unavailable"
+              : money(
+                  accounts.reduce(
+                    (n, a) => n + cents(a.currentBalance),
+                    BigInt(0),
+                  ),
+                )}
           </strong>
           <span>Excludes treasury</span>
         </div>
@@ -65,7 +94,8 @@ export function AccountsPage() {
         <div>
           <small>ACCOUNT COUNT</small>
           <strong>
-            {unavailable ? "Unavailable" : accounts.length} <em>{!unavailable && "records"}</em>
+            {unavailable ? "Unavailable" : accounts.length}{" "}
+            <em>{!unavailable && "records"}</em>
           </strong>
           <span>Ledger registers</span>
         </div>
@@ -108,19 +138,37 @@ export function AccountsPage() {
               }}
             />
           </div>
-          <select
-            aria-label="Account type filter"
-            value={type}
-            onChange={(e) => {
-              setType(e.target.value);
+          <Select
+            items={[
+              { value: "all", label: "All types" },
+              ...["BANK", "CASH", "EWALLET"].map((value) => ({
+                value,
+                label: value,
+              })),
+            ]}
+            value={type || "all"}
+            onValueChange={(value) => {
+              setType(value === "all" || !value ? "" : value);
               setPage(0);
             }}
           >
-            <option value="">All types</option>
-            {["BANK", "CASH", "EWALLET"].map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
+            <SelectTrigger
+              aria-label="Account type filter"
+              className="toolbar-select"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="ledgerflow-select">
+              <SelectGroup>
+                <SelectItem value="all">All types</SelectItem>
+                {["BANK", "CASH", "EWALLET"].map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
           {(query || type) && (
             <button
               onClick={() => {
@@ -135,13 +183,16 @@ export function AccountsPage() {
           <span className="toolbar-end muted">
             {filtered.length} accounts found
           </span>
-          <button
-            disabled={store.loading}
-            aria-label="Refresh accounts"
-            onClick={() => void store.refresh()}
-          >
-            <Icon name="refresh" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              disabled={store.loading}
+              aria-label="Refresh accounts"
+              onClick={() => void store.refresh()}
+            >
+              <Icon name="refresh" />
+            </TooltipTrigger>
+            <TooltipContent>Refresh account snapshot</TooltipContent>
+          </Tooltip>
         </div>
         <div className="table-scroll">
           <table>
@@ -189,22 +240,39 @@ export function AccountsPage() {
                   <td className="number">{money(a.currentBalance)}</td>
                   <td className="date">{stamp(a.createdAt)}</td>
                   <td>
-                    <details className="actions">
-                      <summary aria-label={`Actions for ${a.name}`}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger aria-label={`Actions for ${a.name}`}>
                         •••
-                      </summary>
-                      <div>
-                        <Link href={`/ledger?account=${a.id}`}>
-                          View statement
-                        </Link>
-                        <Link href={`/transfers?account=${a.id}`}>
-                          Transfer
-                        </Link>
-                        <Link href={`/treasury?account=${a.id}`}>
-                          Allocate from treasury
-                        </Link>
-                      </div>
-                    </details>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        className="ledgerflow-menu"
+                      >
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel>Account actions</DropdownMenuLabel>
+                          <DropdownMenuItem
+                            render={<Link href={`/ledger?account=${a.id}`} />}
+                          >
+                            View statement
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            render={
+                              <Link href={`/transfers?account=${a.id}`} />
+                            }
+                          >
+                            Transfer funds
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            render={<Link href={`/treasury?account=${a.id}`} />}
+                          >
+                            Allocate from treasury
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
@@ -263,14 +331,26 @@ export function AccountsPage() {
                 const amount = String(data.get("balance"));
                 cents(amount);
                 setBusy(true);
+                const name = String(data.get("name")).trim();
                 await store.create({
-                  name: String(data.get("name")).trim(),
+                  name,
                   type: data.get("type") as Account["type"],
                   openingBalance: amount,
                 });
                 setOpen(false);
+                notify({
+                  type: "success",
+                  title: "Account created",
+                  description: `${name} · opening balance ${money(amount)}`,
+                });
               } catch (e) {
-                setError((e as Error).message);
+                const message = (e as Error).message;
+                setError(message);
+                notify({
+                  type: "error",
+                  title: "Account creation failed",
+                  description: message,
+                });
               } finally {
                 setBusy(false);
               }
@@ -282,11 +362,25 @@ export function AccountsPage() {
             </label>
             <label>
               Account type
-              <select name="type">
-                <option>BANK</option>
-                <option>CASH</option>
-                <option>EWALLET</option>
-              </select>
+              <Select
+                items={["BANK", "CASH", "EWALLET"].map((value) => ({
+                  value,
+                  label: value,
+                }))}
+                name="type"
+                defaultValue="BANK"
+              >
+                <SelectTrigger aria-label="Account type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="ledgerflow-select">
+                  <SelectGroup>
+                    <SelectItem value="BANK">BANK</SelectItem>
+                    <SelectItem value="CASH">CASH</SelectItem>
+                    <SelectItem value="EWALLET">EWALLET</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </label>
             <label>
               Opening balance · IDR

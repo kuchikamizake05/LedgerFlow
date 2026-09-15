@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.annotation.Import;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,12 +19,14 @@ import ledgerflow_api.transfer.LedgerEntry;
 import ledgerflow_api.transfer.LedgerEntryRepository;
 import ledgerflow_api.transfer.Transfer;
 import ledgerflow_api.transfer.TransferRepository;
+import ledgerflow_api.TestcontainersConfiguration;
 import java.math.BigDecimal;
 import java.util.UUID;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
+@Import(TestcontainersConfiguration.class)
 
 class AccountControllerTest {
 
@@ -98,12 +101,83 @@ class AccountControllerTest {
                 "Deposit"
         ));
         ledgerEntryRepository.save(new LedgerEntry(transfer.getId(), target.getId(), LedgerDirection.CREDIT, new BigDecimal("50000.00")));
+        Transfer secondTransfer = transferRepository.save(new Transfer(
+                source.getId(),
+                target.getId(),
+                new BigDecimal("10000.00"),
+                "idemp-stmt-test-second",
+                "Second deposit"
+        ));
+        ledgerEntryRepository.save(new LedgerEntry(secondTransfer.getId(), target.getId(), LedgerDirection.CREDIT, new BigDecimal("10000.00")));
 
-        mockMvc.perform(get("/api/accounts/" + target.getId() + "/statement"))
+        mockMvc.perform(get("/api/accounts/" + target.getId() + "/statement")
+                        .param("page", "0")
+                        .param("size", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].accountId").value(target.getId().toString()))
-                .andExpect(jsonPath("$[0].direction").value("CREDIT"))
-                .andExpect(jsonPath("$[0].amount").value(50000.0));
+                .andExpect(jsonPath("$.content[0].accountId").value(target.getId().toString()))
+                .andExpect(jsonPath("$.content[0].direction").value("CREDIT"))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true));
+    }
+
+    @Test
+    void shouldFilterAccountStatementOnTheServer() throws Exception {
+        Account account = accountRepository.save(new Account("Statement Account", AccountType.BANK, new BigDecimal("100000.00")));
+        Account counterparty = accountRepository.save(new Account("Counterparty", AccountType.CASH, new BigDecimal("0.00")));
+        Transfer creditTransfer = transferRepository.save(new Transfer(
+                account.getId(),
+                counterparty.getId(),
+                new BigDecimal("25000.00"),
+                "idemp-filter-credit",
+                "Credit posting"
+        ));
+        Transfer debitTransfer = transferRepository.save(new Transfer(
+                account.getId(),
+                counterparty.getId(),
+                new BigDecimal("15000.00"),
+                "idemp-filter-debit",
+                "Debit posting"
+        ));
+        ledgerEntryRepository.save(new LedgerEntry(creditTransfer.getId(), account.getId(), LedgerDirection.CREDIT, new BigDecimal("25000.00")));
+        ledgerEntryRepository.save(new LedgerEntry(debitTransfer.getId(), account.getId(), LedgerDirection.DEBIT, new BigDecimal("15000.00")));
+
+        mockMvc.perform(get("/api/accounts/" + account.getId() + "/statement")
+                        .param("direction", "DEBIT")
+                        .param("transferId", debitTransfer.getId().toString())
+                        .param("from", "2026-01-01")
+                        .param("to", "2026-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").exists())
+                .andExpect(jsonPath("$.content[0].transferId").value(debitTransfer.getId().toString()))
+                .andExpect(jsonPath("$.content[0].direction").value("DEBIT"))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void shouldRejectAnInvertedStatementDateRange() throws Exception {
+        Account account = accountRepository.save(new Account("Range Account", AccountType.BANK, new BigDecimal("0.00")));
+
+        mockMvc.perform(get("/api/accounts/" + account.getId() + "/statement")
+                        .param("from", "2026-09-30")
+                        .param("to", "2026-09-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("From date must be on or before to date"));
+    }
+
+    @Test
+    void shouldRejectInvalidStatementPagination() throws Exception {
+        mockMvc.perform(get("/api/accounts/00000000-0000-0000-0000-000000000000/statement")
+                        .param("page", "-1")
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value(
+                        "Page must be zero or greater and size must be between 1 and 100"));
     }
 
     @Test
