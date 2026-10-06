@@ -3,6 +3,7 @@ package ledgerflow_api.account;
 import java.util.List;
 import java.util.UUID;
 import ledgerflow_api.audit.AuditService;
+import ledgerflow_api.transfer.TransferService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,33 @@ public class AccountService {
     public AccountResponse getAccountById(UUID id) {
         Account account = accountRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+        return AccountResponse.fromAccount(account);
+    }
+
+    @Transactional
+    public AccountResponse freeze(UUID id, FreezeAccountRequest request) {
+        if (TransferService.SYSTEM_TREASURY_ID.equals(id)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "System treasury cannot be frozen");
+        }
+        Account account = accountRepository.findByIdWithLock(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+        if (!account.isFrozen()) {
+            account.freeze();
+            accountRepository.save(account);
+            auditService.record("ACCOUNT_FROZEN", account.getId(), request.reason());
+        }
+        return AccountResponse.fromAccount(account);
+    }
+
+    @Transactional
+    public AccountResponse unfreeze(UUID id, FreezeAccountRequest request) {
+        Account account = accountRepository.findByIdWithLock(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+        if (account.isFrozen()) {
+            account.unfreeze();
+            accountRepository.save(account);
+            auditService.record("ACCOUNT_UNFROZEN", account.getId(), request.reason());
+        }
         return AccountResponse.fromAccount(account);
     }
 

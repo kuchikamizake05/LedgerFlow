@@ -56,6 +56,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/transfers").hasAnyRole(
                                 AppRole.OPERATOR.name(), AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/accounts/*/deposits").hasRole(AppRole.TREASURY_ADMIN.name())
+                        .requestMatchers(HttpMethod.POST, "/api/accounts/*/freeze", "/api/accounts/*/unfreeze")
+                        .hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/accounts").hasRole(AppRole.TREASURY_ADMIN.name())
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer

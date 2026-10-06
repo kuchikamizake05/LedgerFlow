@@ -34,6 +34,9 @@ public class Account {
     @Column(name = "current_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal currentBalance;
 
+    @Column(nullable = false)
+    private boolean frozen;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -71,6 +74,18 @@ public class Account {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public void freeze() {
+        this.frozen = true;
+    }
+
+    public void unfreeze() {
+        this.frozen = false;
     }
         public void debit(BigDecimal amount) {
         this.currentBalance = this.currentBalance.subtract(amount);

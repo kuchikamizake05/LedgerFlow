@@ -10,6 +10,7 @@ public record AccountResponse(
         AccountType type,
         BigDecimal openingBalance,
         BigDecimal currentBalance,
+        boolean frozen,
         Instant createdAt) {
     public static AccountResponse fromAccount(Account account) {
         return new AccountResponse(
@@ -18,6 +19,7 @@ public record AccountResponse(
                 account.getType(),
                 account.getOpeningBalance(),
                 account.getCurrentBalance(),
+                account.isFrozen(),
                 account.getCreatedAt());
     }
 }

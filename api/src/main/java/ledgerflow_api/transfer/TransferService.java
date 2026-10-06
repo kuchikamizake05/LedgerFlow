@@ -109,6 +109,9 @@ public class TransferService {
 
         Account source = firstId.equals(request.sourceAccountId()) ? firstLocked : secondLocked;
         Account target = firstId.equals(request.targetAccountId()) ? firstLocked : secondLocked;
+        if (source.isFrozen() || target.isFrozen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Transfers cannot use frozen accounts");
+        }
         // 4. Cek kecukupan saldo
         if (source.getCurrentBalance().compareTo(request.amount()) < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance");

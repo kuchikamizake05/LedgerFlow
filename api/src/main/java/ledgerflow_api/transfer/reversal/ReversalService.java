@@ -64,6 +64,10 @@ public class ReversalService {
         Account source = firstId.equals(refundSourceId) ? first : second;
         Account target = firstId.equals(refundTargetId) ? first : second;
 
+        if (source.isFrozen() || target.isFrozen()) {
+            throw conflict("Transfers cannot be reversed while either account is frozen");
+        }
+
         if (source.getCurrentBalance().compareTo(original.getAmount()) < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance to refund transfer");
         }

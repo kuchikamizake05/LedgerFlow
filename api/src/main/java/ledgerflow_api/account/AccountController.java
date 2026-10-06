@@ -46,6 +46,16 @@ public class AccountController {
         return accountService.getAllAccounts();
     }
 
+    @PostMapping("/{id}/freeze")
+    public AccountResponse freeze(@PathVariable UUID id, @Valid @RequestBody FreezeAccountRequest request) {
+        return accountService.freeze(id, request);
+    }
+
+    @PostMapping("/{id}/unfreeze")
+    public AccountResponse unfreeze(@PathVariable UUID id, @Valid @RequestBody FreezeAccountRequest request) {
+        return accountService.unfreeze(id, request);
+    }
+
     @GetMapping("/{id}/statement")
     public PageResponse<LedgerEntryResponse> getAccountStatement(
             @PathVariable UUID id,

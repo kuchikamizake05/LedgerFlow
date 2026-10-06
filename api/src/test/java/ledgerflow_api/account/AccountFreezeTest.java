@@ -129,6 +129,27 @@ class AccountFreezeTest {
     }
 
     @Test
+    void completedDepositReplayStillSucceedsAfterTheDestinationIsFrozen() throws Exception {
+        Account target = account("Deposit replay target", "0.00");
+        AppUser admin = user(AppRole.TREASURY_ADMIN);
+        String key = UUID.randomUUID().toString();
+        String payload = "{\"amount\":25.00,\"idempotencyKey\":\"" + key + "\"}";
+        mvc.perform(post("/api/accounts/{id}/deposits", target.getId()).header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isCreated());
+
+        freeze(target, admin, "deposit hold");
+        long transferCount = transfers.count();
+        long entryCount = entries.count();
+        mvc.perform(post("/api/accounts/{id}/deposits", target.getId()).header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk());
+        assertThat(transfers.count()).isEqualTo(transferCount);
+        assertThat(entries.count()).isEqualTo(entryCount);
+        assertThat(balance(target)).isEqualByComparingTo("25.00");
+    }
+
+    @Test
     void reversalIsBlockedWhenEitherRefundAccountIsFrozenAndWorksAfterUnfreeze() throws Exception {
         Account source = account("Original source", "100.00");
         Account target = account("Original target", "0.00");
@@ -148,6 +169,11 @@ class AccountFreezeTest {
         assertThat(balance(target)).isEqualByComparingTo("25.00");
 
         unfreeze(target, admin, "refund approved");
+        freeze(source, admin, "refund destination hold");
+        assertThat(reverse(original.id(), UUID.randomUUID().toString(), admin)).isEqualTo(409);
+        assertThat(transfers.count()).isEqualTo(transferCount);
+        assertThat(entries.count()).isEqualTo(entryCount);
+        unfreeze(source, admin, "refund destination approved");
         assertThat(reverse(original.id(), UUID.randomUUID().toString(), admin)).isEqualTo(201);
         assertThat(balance(source)).isEqualByComparingTo("100.00");
         assertThat(balance(target)).isEqualByComparingTo("0.00");
