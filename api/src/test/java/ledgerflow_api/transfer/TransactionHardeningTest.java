@@ -50,6 +50,15 @@ class TransactionHardeningTest {
   assertThat(send(path,body.replace("1.00","2.00"),AppRole.TREASURY_ADMIN)).isEqualTo(409);
   assertThat(accounts.findById(target).orElseThrow().getCurrentBalance()).isEqualByComparingTo("1");
  }
+ @Test void recipientBalanceOverflowRollsBackWithoutPostings() throws Exception {
+  Account source=account("1.00"),target=account("99999999999999999.99");
+  String key=UUID.randomUUID().toString();
+  assertThat(send("/api/transfers",transfer(source.getId(),target.getId(),"0.01",key),AppRole.OPERATOR)).isEqualTo(400);
+  assertThat(accounts.findById(source.getId()).orElseThrow().getCurrentBalance()).isEqualByComparingTo("1.00");
+  assertThat(accounts.findById(target.getId()).orElseThrow().getCurrentBalance()).isEqualByComparingTo("99999999999999999.99");
+  assertThat(transfers.findByIdempotencyKey(key)).isEmpty();
+  assertThat(entries.findAll().stream().filter(entry->entry.getAccountId().equals(target.getId())).toList()).isEmpty();
+ }
  @Test void concurrentFullBalanceTransferReplays() throws Exception {
   Account source=account("1"),target=account("0"); String key=UUID.randomUUID().toString();
   concurrent("/api/transfers",transfer(source.getId(),target.getId(),"1.00",key),AppRole.OPERATOR,key);
@@ -71,4 +80,5 @@ class TransactionHardeningTest {
   assertThat(entries.findByTransferIdOrderByCreatedAtAsc(transfers.findByIdempotencyKey(key).orElseThrow().getId())).hasSize(2);
  }
 }
+
 
