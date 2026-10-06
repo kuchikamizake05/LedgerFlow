@@ -57,6 +57,21 @@ test("audit adapter forwards exact resource and action filters", async () => {
  assert.equal(response.status, 200); assert.equal(new URL(upstream).search, query);
  } finally {globalThis.fetch = original;}
 });
+test("freeze and unfreeze forward reasons and preserve write origin checks", async () => {
+ const route = await loadRoute("../src/app/api/backend/[...path]/route.ts");
+ const original = globalThis.fetch; const id="10000000-0000-4000-8000-000000000001"; let forwarded;
+ globalThis.fetch=async (_,options)=>{forwarded=options.body;return Response.json({id,frozen:true});};
+ const body=JSON.stringify({reason:"Review unusual activity"});
+ try {
+ for (const action of ["freeze","unfreeze"]) {
+ const context={params:Promise.resolve({path:["accounts",id,action]})};
+ const response=await route.POST(new NextRequest(`http://localhost/api/backend/accounts/${id}/${action}`,{method:"POST",headers:{origin:"http://localhost"},body}),context);
+ assert.equal(response.status,200);assert.equal(forwarded,body);
+ const denied=await route.POST(new NextRequest(`http://localhost/api/backend/accounts/${id}/${action}`,{method:"POST",headers:{origin:"https://other.example"},body}),context);
+ assert.equal(denied.status,403);
+ }
+ }finally{globalThis.fetch=original;}
+});
 test("reversal forwards unchanged request and rejects cross-origin writes", async () => {
  const route = await loadRoute("../src/app/api/backend/[...path]/route.ts");
  const original = globalThis.fetch; const id="10000000-0000-4000-8000-000000000001"; let forwarded;
