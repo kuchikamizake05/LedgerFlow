@@ -18,6 +18,7 @@ New registrations receive AUDITOR access. This release has no role-management sc
 | Transfer between ordinary accounts | No | Yes | Yes |
 | Create accounts or allocate treasury funds | No | No | Yes |
 | Reverse a completed original transfer | No | No | Yes |
+| Freeze or unfreeze an ordinary account | No | No | Yes |
 
 The system treasury cannot be the source of an ordinary transfer. Allocations go through the deposits endpoint. Live actions are authorized by the backend, while demo actions affect synthetic browser state only.
 
@@ -41,4 +42,6 @@ Admins can reverse a completed original transfer in the live Ledger transaction 
 
 ## Current boundaries
 
-Account freeze, approvals, rate limiting, token revocation and production deployment are not implemented. Logout removes the browser cookie; an already issued bearer token remains valid until expiry. Direct local API startup currently has a development-only JWT fallback; always provide a private secret for a deployed environment. The default local database credentials are development credentials.
+Admins can freeze/unfreeze ordinary accounts from the live Accounts page or `POST /api/accounts/{id}/freeze` and `/unfreeze` with a required reason (up to 255 characters). New transfers, treasury allocations and reversals involving a frozen account return 409 without financial changes. Previously committed exact retries remain readable. Reads and reconciliation continue; the system treasury cannot be frozen. State changes record audit events atomically; repeating the current state creates no additional event.
+
+Approvals, rate limiting, token revocation and production deployment are not implemented. Logout removes the browser cookie; an already issued bearer token remains valid until expiry. Direct local API startup currently has a development-only JWT fallback; always provide a private secret for a deployed environment. The default local database credentials are development credentials.
