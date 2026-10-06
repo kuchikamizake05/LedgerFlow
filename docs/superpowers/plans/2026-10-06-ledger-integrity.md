@@ -16,39 +16,39 @@ No auto repair, no secret logging, no external deployment. Treasury source is re
 
 Files: account/transfer DTOs, TransferService, AccountController, new authenticated transaction integration tests.
 
-- [ ] Write and execute failing tests for treasury bypass, excess decimals, duplicate deposits, and exhausted-balance retries.
-- [ ] Checkpoint tests, implement shared transactional execution and replay recovery, rerun the same tests.
-- [ ] Verify existing functional and concurrency tests remain green.
+- [x] Write and execute failing tests for treasury bypass, excess decimals, duplicate deposits, and exhausted-balance retries.
+- [x] Checkpoint tests, implement shared transactional execution and replay recovery, rerun the same tests.
+- [x] Verify existing functional and concurrency tests remain green.
 
 ## Task 2: Reconciliation
 
 Files: new reconciliation controller/service/response records and integration tests.
 
-- [ ] Write and execute failing endpoint tests for balanced, corrupt, missing-entry and unauthenticated cases.
-- [ ] Checkpoint tests; implement aggregate reads in a REPEATABLE_READ transaction.
-- [ ] Return the exact response contract in the spec and verify no database writes occur.
+- [x] Write and execute failing endpoint tests for balanced, corrupt, missing-entry and unauthenticated cases.
+- [x] Checkpoint tests; implement aggregate reads in a REPEATABLE_READ transaction.
+- [x] Return the exact response contract in the spec and verify no database writes occur.
 
 ## Task 3: Admin bootstrap
 
 Files: new auth bootstrap service/configuration, tests, application.properties, .env.example.
 
-- [ ] Write and execute failing validation and lifecycle tests.
-- [ ] Checkpoint tests; create an admin only from paired explicit environment variables.
-- [ ] Verify repeated startup preserves credentials and conflicts fail without promotion.
+- [x] Write and execute failing validation and lifecycle tests.
+- [x] Checkpoint tests; create an admin only from paired explicit environment variables.
+- [x] Verify repeated startup preserves credentials and conflicts fail without promotion.
 
 ## Task 4: Frontend integration
 
 Files: backend adapter, workspace, account/payment/ledger UI, auth session route, browser and adapter tests.
 
-- [ ] Reproduce query loss and permission behavior in tests.
-- [ ] Checkpoint tests; forward queries, expose role capabilities, handle expiry, display explicit reconciliation results.
-- [ ] Update smoke setup for authentication; verify demo workflows and live reads.
-- [ ] Run lint, build, unit/adapter tests and browser smoke.
+- [x] Reproduce query loss and permission behavior in tests.
+- [x] Checkpoint tests; forward queries, expose role capabilities, handle expiry, display explicit reconciliation results.
+- [x] Update smoke setup for authentication; verify demo workflows and live reads.
+- [x] Run lint, build, unit/adapter tests and browser smoke.
 
 ## Task 5: Integrate and document
 
 Files: web/OPERATIONS.md, compose.yml, root README.md, this plan.
 
-- [ ] Document role matrix, admin bootstrap, reconciliation, retry rules and remaining limitations.
-- [ ] Pass optional bootstrap variables through Compose.
-- [ ] Run all backend tests, inspect final diff and dependency audit, checkpoint completed work.
+- [x] Document role matrix, admin bootstrap, reconciliation, retry rules and remaining limitations.
+- [x] Pass optional bootstrap variables through Compose.
+- [x] Run all backend tests, inspect final diff and dependency audit, checkpoint completed work.

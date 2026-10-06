@@ -1,30 +1,36 @@
-# LedgerFlow frontend
+# LedgerFlow frontend operations
 
-Run `npm install` and `npm run dev` from this directory. The root redirects to `/accounts`.
+Run `npm ci` and `npm run dev` from `web`. The root redirects to `/accounts`; login and registration are at `/auth/login` and `/auth/register`.
 
-Routes: `/accounts`, `/transfers`, `/treasury`, `/ledger`, `/system-status`.
+## Authentication and data modes
 
-## Data modes
+The Next.js server stores the access token in an HttpOnly cookie and forwards it as a bearer token to Spring. Public registration creates an AUDITOR. Create the first TREASURY_ADMIN with the explicit environment bootstrap described in the root README. In production the token cookie requires HTTPS.
 
-- **Demo preview** (default): synthetic accounts and journal postings. Create/transfer/allocation update in-memory state. Reloading or switching data mode resets it. Nothing is written to Spring.
-- **Local API**: choose this in the header to use the existing Spring Boot API. Default origin is `http://127.0.0.1:8081`; override `LEDGERFLOW_API_URL` in `.env.local` and restart Next. This is an origin, without `/api`.
+- Demo preview is the default. Account creation, transfers and allocations affect synthetic session state. Reloading or changing mode resets it.
+- Local API connects to Spring at `http://127.0.0.1:8081`. Override the origin through `LEDGERFLOW_API_URL` in `.env.local`, then restart Next.js. Requests change the development database.
 
-The backend adapter is allowlisted and preserves decimal monetary JSON fields as strings. UI arithmetic uses integer minor units (BigInt), not floating-point money. Amount fields accept a period decimal separator without grouping; display uses IDR formatting.
+Live actions follow the signed-in role: auditors read, operators transfer ordinary funds, and treasury administrators also create accounts and allocate from treasury. The backend remains authoritative.
 
-## Scope and limitations
+## Statements and reconciliation
 
-The implementation follows the supplied five-page HTML design with reusable React layout, forms, native modal dialogs, filtered/paginated tables and responsive navigation. Reference-frame examples are real conditional states, not duplicated sections below the page.
+Select an account on `/ledger` to retrieve its statement. Pagination, direction, transfer ID and Jakarta date-range filters are forwarded to Spring. Monetary fields remain decimal strings and browser display arithmetic uses integer minor units.
 
-Existing endpoints support account creation/listing, transfers, treasury deposits, per-account statements, transaction lookup and health. Global journal listing, global reconciliation, volume aggregates, request metrics and persisted health history are not exposed: these are explicitly unavailable. The concurrency lab does not send requests.
+Run reconciliation explicitly from the Ledger page in Local API mode. The report checks stored account balances against opening balance plus credits minus debits and validates transfer journals. Signed differences identify mismatches. Reconciliation does not repair data or infer the provenance of opening balances. Demo mode does not verify the database.
 
-The local backend has no authentication. Do not deploy this operator UI publicly until authentication, authorization and backend validation are implemented. A SANDBOX badge is a label, not a security boundary. Health exposes database state only if Spring includes it; no status is inferred from connectivity alone.
+## Safe retries
 
-The backend currently replays an idempotency key without checking whether its payload changed. Preserve the key and payload after a failed/unknown submission. A financial-production idempotency contract requires backend hardening, including concurrent duplicate handling. Backend files were not changed in this frontend task.
+After unknown payment confirmation, keep the same idempotency key and original payload. Retrying an unchanged transfer or allocation returns the existing result without another movement. A changed payload returns a conflict. Inputs accept a period decimal separator and at most two fractional digits.
 
 ## Verification
 
+- `npm run test`
 - `npm run lint`
 - `npm run build`
-- Start dev at `127.0.0.1:3100`, then `python tests/smoke.py` (requires Python Playwright and Chromium).
+- Start development on `127.0.0.1:3100`, then run `python tests/smoke.py` (Python Playwright and Chromium required).
+- Run `python tests/live_smoke.py` against the same server for mocked live permissions, filters, expiry and reconciliation flows.
 
-Smoke tests exercise demo-only account creation, filtering, transfers, journal counterpart inspection, status refresh and mobile overflow. Screenshots are written under ignored `tests/artifacts/`.
+Browser tests use isolated mocked authentication and API responses where documented in the test; backend authorization and financial correctness are verified separately using real PostgreSQL integration tests. Screenshots are stored under ignored `tests/artifacts/`.
+
+## Remaining limitations
+
+Global journal browsing, volume aggregates, server request metrics and persisted health history are unavailable. The concurrency lab does not send load. Audit trail, reversals, freeze/unfreeze, role management, token revocation and rate limiting remain subsequent work. Health details are shown only when the backend exposes them.
