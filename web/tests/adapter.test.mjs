@@ -46,3 +46,27 @@ test("session preserves cookie on backend failure and clears expired authenticat
     assert.match((await route.GET()).headers.get("set-cookie"), /ledgerflow_access_token=;/);
   } finally { globalThis.fetch = original; delete globalThis.testCookies; }
 });
+
+test("audit adapter forwards exact resource and action filters", async () => {
+ const route = await loadRoute("../src/app/api/backend/[...path]/route.ts");
+ const original = globalThis.fetch; let upstream;
+ globalThis.fetch = async url => { upstream = String(url); return Response.json({content: []}); };
+ try {
+ const query = "?page=1&size=20&action=TRANSFER_REVERSED&resourceId=10000000-0000-4000-8000-000000000001";
+ const response = await route.GET(new NextRequest(`http://localhost/api/backend/audit${query}`), {params: Promise.resolve({path:["audit"]})});
+ assert.equal(response.status, 200); assert.equal(new URL(upstream).search, query);
+ } finally {globalThis.fetch = original;}
+});
+test("reversal forwards unchanged request and rejects cross-origin writes", async () => {
+ const route = await loadRoute("../src/app/api/backend/[...path]/route.ts");
+ const original = globalThis.fetch; const id="10000000-0000-4000-8000-000000000001"; let forwarded;
+ globalThis.fetch=async (_,options)=>{forwarded=options.body;return Response.json({id,reversalOf:id});};
+ const context={params:Promise.resolve({path:["transfers",id,"reversal"]})};
+ const body=JSON.stringify({reason:"Duplicate payment",idempotencyKey:"unchanged-request"});
+ try {
+ const response=await route.POST(new NextRequest(`http://localhost/api/backend/transfers/${id}/reversal`,{method:"POST",headers:{origin:"http://localhost"},body}),context);
+ assert.equal(response.status,200);assert.equal(forwarded,body);
+ const denied=await route.POST(new NextRequest(`http://localhost/api/backend/transfers/${id}/reversal`,{method:"POST",headers:{origin:"https://other.example"},body}),context);
+ assert.equal(denied.status,403);
+ }finally{globalThis.fetch=original;}
+});
