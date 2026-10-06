@@ -1,9 +1,12 @@
 "use client";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Entry,
+  ApiError,
   PageResponse,
+  Transfer,
   api,
   cents,
   money,
@@ -44,6 +47,14 @@ export function LedgerPage() {
   const [detailError, setDetailError] = useState("");
   const [detailBusy, setDetailBusy] = useState(false);
   const [page, setPage] = useState(0);
+  const [statementReload, setStatementReload] = useState(0);
+  const [transferDetails, setTransferDetails] = useState<Transfer>();
+  const [detailsReload, setDetailsReload] = useState(0);
+  const [reversalReason, setReversalReason] = useState("");
+  const [reversalKey, setReversalKey] = useState("");
+  const [reversalError, setReversalError] = useState("");
+  const [reversalBusy, setReversalBusy] = useState(false);
+  const [reversalUnknown, setReversalUnknown] = useState(false);
   useEffect(() => {
     if (store.mode !== "live" || !account) {
       return;
@@ -73,7 +84,7 @@ export function LedgerPage() {
     return () => {
       active = false;
     };
-  }, [account, date, direction, endDate, page, query, store.mode]);
+  }, [account, date, direction, endDate, page, query, statementReload, store.mode]);
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -97,6 +108,48 @@ export function LedgerPage() {
       active = false;
     };
   }, [selected, store.mode, store.entries]);
+  useEffect(() => {
+    if (!selected) return;
+    if (store.mode === "demo") return;
+    let active = true;
+    api<Transfer>(`transfers/${selected.transferId}`)
+      .then((transfer) => {
+        if (active) setTransferDetails(transfer);
+      })
+      .catch((e) => {
+        if (active) setDetailError((e as Error).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, store.mode, detailsReload]);
+  const shownTransfer = store.mode === "demo"
+    ? store.transfers.find((transfer) => transfer.id === selected?.transferId)
+    : transferDetails;
+  function openDetails(entry: Entry) {
+    setSelected(entry);
+    setPair([]);
+    setDetailError("");
+    setDetailBusy(true);
+    setTransferDetails(undefined);
+    setReversalReason("");
+    setReversalKey("");
+    setReversalError("");
+    setReversalUnknown(false);
+    if (store.mode !== "live" || !store.sessionEmail) return;
+    try {
+      const raw = localStorage.getItem(`ledgerflow-pending-reversal:${store.sessionEmail}:${entry.transferId}`);
+      const saved = raw ? JSON.parse(raw) as { email?: string; transferId?: string; reason?: string; idempotencyKey?: string } : null;
+      if (saved?.email === store.sessionEmail && saved.transferId === entry.transferId
+        && typeof saved.reason === "string" && typeof saved.idempotencyKey === "string") {
+        setReversalReason(saved.reason);
+        setReversalKey(saved.idempotencyKey);
+        setReversalUnknown(true);
+      }
+    } catch {
+      setReversalError("Browser storage is unavailable. Enable it before submitting a reversal so its request reference can be recovered.");
+    }
+  }
   const source = store.mode === "demo" ? store.entries : account ? live : [];
   const rows = store.mode === "live" ? source : source.filter(
     (e) =>
@@ -121,6 +174,53 @@ export function LedgerPage() {
   const credit = pair
     .filter((e) => e.direction === "CREDIT")
     .reduce((n, e) => n + cents(e.amount), BigInt(0));
+  async function reverseTransfer() {
+    if (!selected || store.mode !== "live" || store.role !== "TREASURY_ADMIN" || reversalBusy) return;
+    const reason = reversalReason.trim();
+    if (!reason || reason.length > 255) {
+      setReversalError("Enter a reason of 1 to 255 characters.");
+      return;
+    }
+    const key = reversalKey || crypto.randomUUID();
+    setReversalKey(key);
+    setReversalBusy(true);
+    setReversalError("");
+    const storageKey = `ledgerflow-pending-reversal:${store.sessionEmail}:${selected.transferId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        email: store.sessionEmail, transferId: selected.transferId, reason, idempotencyKey: key,
+      }));
+    } catch {
+      setReversalError("Browser storage is unavailable. Reversal was not submitted; enable storage and retry.");
+      setReversalBusy(false);
+      return;
+    }
+    try {
+      await api<Transfer>(`transfers/${selected.transferId}/reversal`, {
+        idempotencyKey: key,
+        reason,
+      });
+      try { localStorage.removeItem(storageKey); } catch { /* A retained reference safely replays. */ }
+      setReversalUnknown(false);
+      setReversalKey("");
+      setReversalReason("");
+      setTransferDetails(undefined);
+      setDetailsReload((value) => value + 1);
+      setStatementReload((value) => value + 1);
+      await store.refresh();
+    } catch (e) {
+      const message = (e as Error).message;
+      setReversalError(message);
+      const uncertain = !(e instanceof ApiError) || e.status >= 500 || e.status === 401;
+      setReversalUnknown(uncertain);
+      if (!uncertain) {
+        try { localStorage.removeItem(storageKey); } catch { /* A retained reference safely replays. */ }
+        setReversalKey("");
+      }
+    } finally {
+      setReversalBusy(false);
+    }
+  }
   function exportCsv() {
     const escape = (s: string) => `"${s.replaceAll('"', '""')}"`;
     const csv = [
@@ -314,12 +414,7 @@ export function LedgerPage() {
                   <td>
                     <button
                       className="plain link mono"
-                      onClick={() => {
-                        setSelected(e);
-                        setPair([]);
-                        setDetailError("");
-                        setDetailBusy(true);
-                      }}
+                      onClick={() => openDetails(e)}
                     >
                       {shortId(e.transferId)}
                     </button>
@@ -385,6 +480,76 @@ export function LedgerPage() {
             <Copy value={selected.transferId} />
           </p>
           <p>{stamp(selected.createdAt)}</p>
+          <hr />
+          <h3>Transfer record</h3>
+          {shownTransfer ? (
+            <dl className="detail-list">
+              <dt>Status</dt>
+              <dd>{shownTransfer.status}</dd>
+              <dt>Amount</dt>
+              <dd>{money(shownTransfer.amount)}</dd>
+              <dt>Request reference</dt>
+              <dd className="mono wrap">{shownTransfer.idempotencyKey}</dd>
+              {shownTransfer.reversalOf && <>
+                <dt>Reverses</dt>
+                <dd className="mono wrap">
+                  <Link href={`/ledger?transaction=${shownTransfer.reversalOf}`}>
+                    {shownTransfer.reversalOf}
+                  </Link>
+                </dd>
+              </>}
+              <dt>Description</dt>
+              <dd>{shownTransfer.description}</dd>
+            </dl>
+          ) : detailBusy ? <p>Loading transfer metadata…</p> : null}
+          {store.mode === "demo" && (
+            <Notice>Audit and reversal are unavailable in demo mode. Synthetic activity does not create persisted records.</Notice>
+          )}
+          {store.mode === "live" && store.role === "TREASURY_ADMIN" && transferDetails && (
+            <section className="balance-block">
+              <h3>Compensating reversal</h3>
+              {transferDetails.status === "REVERSED" ? (
+                <Notice>This transfer has already been reversed. Its original journal remains in the ledger.</Notice>
+              ) : transferDetails.reversalOf ? (
+                <Notice>A compensating transfer cannot be reversed.</Notice>
+              ) : transferDetails.status !== "COMPLETED" ? (
+                <Notice>Only a completed transfer can be reversed.</Notice>
+              ) : (
+                <>
+                  <label>
+                    Reason for reversal
+                    <textarea
+                      required
+                      maxLength={255}
+                      value={reversalReason}
+                      disabled={reversalBusy || reversalUnknown}
+                      onChange={(e) => setReversalReason(e.target.value)}
+                      aria-label="Reason for reversal"
+                      placeholder="Explain why this completed transfer must be reversed"
+                    />
+                    <small>{reversalReason.length}/255 characters</small>
+                  </label>
+                  {reversalUnknown && <Notice>
+                    The result is unconfirmed. Retry only with this saved request reference: <span className="mono">{reversalKey}</span>
+                  </Notice>}
+                  {reversalError && <Notice danger>{reversalError}</Notice>}
+                  <div className="form-actions">
+                    <span className="muted">This posts a new balancing transfer. Original entries stay unchanged.</span>
+                    <button
+                      className="primary"
+                      disabled={reversalBusy || !reversalReason.trim() || reversalReason.length > 255}
+                      onClick={() => void reverseTransfer()}
+                    >
+                      {reversalBusy ? "Submitting…" : reversalUnknown ? "Retry same reversal" : "Confirm reversal"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+          {store.mode === "live" && store.role !== "TREASURY_ADMIN" && (
+            <p className="muted">Read-only transfer inspection. Reversal is restricted to Treasury Admin.</p>
+          )}
           <hr />
           <h3>Journal postings</h3>
           {detailBusy && <p>Loading counterpart entries…</p>}

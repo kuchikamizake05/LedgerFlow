@@ -31,6 +31,17 @@ export type Transfer = {
   idempotencyKey: string;
   description: string;
   createdAt: string;
+  reversalOf?: string | null;
+};
+export type AuditEvent = {
+  id: string;
+  actorId: string | null;
+  actorEmail: string | null;
+  actorRole: string;
+  action: string;
+  resourceId: string;
+  description: string;
+  createdAt: string;
 };
 export const TREASURY = "00000000-0000-0000-0000-000000000001";
 export function cents(value: string): bigint {

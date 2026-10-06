@@ -77,6 +77,7 @@ export function Icon({ name }: { name: string }) {
     transfers: "M3 7h17m-4-4 4 4-4 4M21 17H4m4-4-4 4 4 4",
     treasury: "M3 5h18v15H3zM3 9h18m-5 4h5v4h-5z",
     ledger: "M12 5v16M3 3l9 2 9-2v16l-9 2-9-2z",
+    audit: "M4 5h16M4 12h16M4 19h16M8 5v14",
     "system-status": "M3 3h18v7H3zM3 14h18v7H3zM6 6h1m-1 11h1",
     refresh: "M20 7a9 9 0 1 0 1 9M20 2v5h-5",
     plus: "M12 5v14M5 12h14",
@@ -318,6 +319,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
             ["transfers", "Transfers"],
             ["treasury", "Treasury"],
             ["ledger", "Ledger"],
+            ["audit", "Audit trail"],
             ["system-status", "System status"],
           ].map(([path, label]) => (
             <Link

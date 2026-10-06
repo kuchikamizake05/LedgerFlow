@@ -6,9 +6,11 @@ async function forward(
 ) {
   const path = (await context.params).path.join("/");
   const read = new RegExp(
-    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|auth/me|health|reconciliation)$`,
+    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|audit|auth/me|health|reconciliation)$`,
   );
-  const write = new RegExp(`^(accounts|transfers|accounts/${uuid}/deposits)$`);
+  const write = new RegExp(
+    `^(accounts|transfers|accounts/${uuid}/deposits|transfers/${uuid}/reversal)$`,
+  );
   if (!(request.method === "GET" ? read : write).test(path))
     return NextResponse.json(
       { message: "Endpoint not supported." },
