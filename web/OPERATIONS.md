@@ -21,16 +21,25 @@ Run reconciliation explicitly from the Ledger page in Local API mode. The report
 
 After unknown payment confirmation, keep the same idempotency key and original payload. Retrying an unchanged transfer or allocation returns the existing result without another movement. A changed payload returns a conflict. Inputs accept a period decimal separator and at most two fractional digits.
 
-## Verification
+## Audit and reversals
+
+Use `/audit` in Local API mode to browse committed actions with actor attribution and pagination. Filter by action or resource ID. Demo mode shows no fabricated persisted events.
+
+Open a transaction from its ledger entry to inspect status and journal postings. Treasury administrators can confirm a reversal with a reason. Original journal entries remain unchanged; a new linked transfer posts the refund. Keep the same request reference and reason after uncertain confirmation. A transfer can be reversed once and compensating transfers cannot be reversed again.
+
+Unconfirmed reversal references are saved in browser storage separately for each user and transfer. Reopen the transaction in Local API mode to retry the unchanged request. Browser storage must be available before submission; clearing that storage removes recovery references.
+
+## Verification commands
 
 - `npm run test`
 - `npm run lint`
 - `npm run build`
 - Start development on `127.0.0.1:3100`, then run `python tests/smoke.py` (Python Playwright and Chromium required).
 - Run `python tests/live_smoke.py` against the same server for mocked live permissions, filters, expiry and reconciliation flows.
+- Run `python tests/reversal_audit_smoke.py` for mocked audit and reversal confirmation flows.
 
 Browser tests use isolated mocked authentication and API responses where documented in the test; backend authorization and financial correctness are verified separately using real PostgreSQL integration tests. Screenshots are stored under ignored `tests/artifacts/`.
 
 ## Remaining limitations
 
-Global journal browsing, volume aggregates, server request metrics and persisted health history are unavailable. The concurrency lab does not send load. Audit trail, reversals, freeze/unfreeze, role management, token revocation and rate limiting remain subsequent work. Health details are shown only when the backend exposes them.
+Global journal browsing, volume aggregates, server request metrics and persisted health history are unavailable. The concurrency lab does not send load. Freeze/unfreeze, role management, token revocation and rate limiting remain subsequent work. Audit currently covers successful financial mutations; login-event audit is not implemented. Health details are shown only when the backend exposes them.

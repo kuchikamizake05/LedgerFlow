@@ -14,9 +14,10 @@ New registrations receive AUDITOR access. This release has no role-management sc
 
 | Operation | AUDITOR | OPERATOR | TREASURY_ADMIN |
 | --- | --- | --- | --- |
-| Read accounts, statements and reconciliation | Yes | Yes | Yes |
+| Read accounts, statements, audit and reconciliation | Yes | Yes | Yes |
 | Transfer between ordinary accounts | No | Yes | Yes |
 | Create accounts or allocate treasury funds | No | No | Yes |
+| Reverse a completed original transfer | No | No | Yes |
 
 The system treasury cannot be the source of an ordinary transfer. Allocations go through the deposits endpoint. Live actions are authorized by the backend, while demo actions affect synthetic browser state only.
 
@@ -32,6 +33,12 @@ Reconciliation is available through authenticated `GET /api/reconciliation` and 
 
 Run `./mvnw test` in `api` (Windows: `mvnw.cmd test`). Docker is required for PostgreSQL integration tests. Run the frontend test, lint, build and browser checks described in `web/OPERATIONS.md`.
 
+## Audit and reversals
+
+Successful account creation, transfer, treasury allocation and reversal commit an audit event in the same transaction. Events include the actor, action, resource and timestamp, and reject updates, deletes and truncation. Retries create no extra success event. The `/audit` page supports paginated browsing and exact action/resource filters. Historical transactions before audit was introduced are not backfilled with invented actors; login attempts are outside this audit scope.
+
+Admins can reverse a completed original transfer in the live Ledger transaction drawer or via `POST /api/transfers/{id}/reversal`, supplying `idempotencyKey` and a nonblank `reason`. A reversal creates a new linked transfer and compensating journal; the original becomes REVERSED and retains its postings. Insufficient refund balance or destination overflow prevents any change. The same key and reason replay the result; a second distinct attempt, changed payload or reversal of a compensating transfer returns conflict. Demo mode does not provide persisted audit or reversals.
+
 ## Current boundaries
 
-Audit trail, reversals, account freeze, approvals, rate limiting, token revocation and production deployment are not implemented. Logout removes the browser cookie; an already issued bearer token remains valid until expiry. Direct local API startup currently has a development-only JWT fallback; always provide a private secret for a deployed environment. The default local database credentials are development credentials.
+Account freeze, approvals, rate limiting, token revocation and production deployment are not implemented. Logout removes the browser cookie; an already issued bearer token remains valid until expiry. Direct local API startup currently has a development-only JWT fallback; always provide a private secret for a deployed environment. The default local database credentials are development credentials.
