@@ -18,6 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest @AutoConfigureMockMvc @Import(TestcontainersConfiguration.class)
 class ReversalTest {
@@ -74,6 +75,28 @@ class ReversalTest {
         assertThat(jdbc.queryForObject("select count(*) from transfers where reversal_of=?", Long.class, original.id()))
             .isEqualTo(1L);
         assertThat(reconciliation.check().status()).isEqualTo("BALANCED");
+    }
+    @Test void ordinaryTransferCannotReplayAReversalIdempotencyKey() throws Exception {
+        TransferResponse original = original();
+        String key = UUID.randomUUID().toString();
+        assertThat(reverse(original.id(), key, "Correction", AppRole.TREASURY_ADMIN)).isEqualTo(201);
+        BigDecimal sourceBefore = accounts.findById(original.targetAccountId()).orElseThrow().getCurrentBalance();
+        BigDecimal targetBefore = accounts.findById(original.sourceAccountId()).orElseThrow().getCurrentBalance();
+        long ledgerCountBefore = entries.count();
+        long transferCountBefore = transfers.count();
+        String token = jwt.issue(new AppUser(UUID.randomUUID()+"@test.local", "unused", AppRole.OPERATOR)).value();
+
+        mvc.perform(post("/api/transfers").header("Authorization", "Bearer "+token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"sourceAccountId\":\""+original.targetAccountId()+"\","
+                        +"\"targetAccountId\":\""+original.sourceAccountId()+"\","
+                        +"\"amount\":10,\"idempotencyKey\":\""+key+"\",\"description\":\"Correction\"}"))
+                .andExpect(status().isConflict());
+
+        assertThat(accounts.findById(original.targetAccountId()).orElseThrow().getCurrentBalance()).isEqualByComparingTo(sourceBefore);
+        assertThat(accounts.findById(original.sourceAccountId()).orElseThrow().getCurrentBalance()).isEqualByComparingTo(targetBefore);
+        assertThat(entries.count()).isEqualTo(ledgerCountBefore);
+        assertThat(transfers.count()).isEqualTo(transferCountBefore);
     }
     @Test void writesOneReversalAuditEventWithTheAuthenticatedAdminActor() throws Exception {
         TransferResponse original = original();

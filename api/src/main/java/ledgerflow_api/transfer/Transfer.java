@@ -34,6 +34,9 @@ public class Transfer {
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 100)
     private String idempotencyKey;
 
+    @Column(name = "reversal_of", unique = true)
+    private UUID reversalOf;
+
     @Column(length = 255)
     private String description;
 
@@ -45,12 +48,18 @@ public class Transfer {
 
     public Transfer(UUID sourceAccountId, UUID targetAccountId, BigDecimal amount, String idempotencyKey,
             String description) {
+        this(sourceAccountId, targetAccountId, amount, idempotencyKey, description, null);
+    }
+
+    public Transfer(UUID sourceAccountId, UUID targetAccountId, BigDecimal amount, String idempotencyKey,
+            String description, UUID reversalOf) {
         this.id = UUID.randomUUID();
         this.sourceAccountId = sourceAccountId;
         this.targetAccountId = targetAccountId;
         this.amount = amount;
         this.status = TransferStatus.COMPLETED;
         this.idempotencyKey = idempotencyKey;
+        this.reversalOf = reversalOf;
         this.description = description;
         this.createdAt = Instant.now();
     }
@@ -85,5 +94,13 @@ public class Transfer {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getReversalOf() {
+        return reversalOf;
+    }
+
+    public void markReversed() {
+        this.status = TransferStatus.REVERSED;
     }
 }

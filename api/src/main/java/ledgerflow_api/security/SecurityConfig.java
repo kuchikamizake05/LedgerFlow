@@ -49,6 +49,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/transfers/*/reversal")
+                        .hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole(
                                 AppRole.AUDITOR.name(), AppRole.OPERATOR.name(), AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/transfers").hasAnyRole(

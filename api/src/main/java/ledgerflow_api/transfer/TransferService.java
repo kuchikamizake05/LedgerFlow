@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ledgerflow_api.account.Account;
 import ledgerflow_api.account.AccountRepository;
 import ledgerflow_api.common.PageResponse;
+import ledgerflow_api.audit.AuditService;
 
 @Service
 public class TransferService {
@@ -27,13 +28,16 @@ public class TransferService {
     private final TransferRepository transferRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final AccountRepository accountRepository;
+    private final AuditService auditService;
 
     public TransferService(TransferRepository transferRepository,
             LedgerEntryRepository ledgerEntryRepository,
-            AccountRepository accountRepository) {
+            AccountRepository accountRepository,
+            AuditService auditService) {
         this.transferRepository = transferRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.accountRepository = accountRepository;
+        this.auditService = auditService;
     }
     public static final UUID SYSTEM_TREASURY_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
@@ -143,11 +147,15 @@ public class TransferService {
         ledgerEntryRepository.save(debitEntry);
         ledgerEntryRepository.save(creditEntry);
 
+        String auditAction = SYSTEM_TREASURY_ID.equals(source.getId()) ? "TREASURY_DEPOSIT" : "TRANSFER_COMPLETED";
+        auditService.record(auditAction, savedTransfer.getId(), "Completed transfer " + savedTransfer.getId());
+
         return new TransferExecutionResult(TransferResponse.from(savedTransfer), false);
     }
 
     private void validateMatchingIdempotencyPayload(Transfer existing, CreateTransferRequest request) {
-        boolean matches = existing.getSourceAccountId().equals(request.sourceAccountId())
+        boolean matches = existing.getReversalOf() == null
+                && existing.getSourceAccountId().equals(request.sourceAccountId())
                 && existing.getTargetAccountId().equals(request.targetAccountId())
                 && existing.getAmount().compareTo(request.amount()) == 0
                 && Objects.equals(existing.getDescription(), request.description());

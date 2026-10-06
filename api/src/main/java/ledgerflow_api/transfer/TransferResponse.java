@@ -12,7 +12,8 @@ public record TransferResponse(
         TransferStatus status,
         String idempotencyKey,
         String description,
-        Instant createdAt
+        Instant createdAt,
+        UUID reversalOf
 ) {
     public static TransferResponse from(Transfer transfer) {
         return new TransferResponse(
@@ -23,7 +24,8 @@ public record TransferResponse(
                 transfer.getStatus(),
                 transfer.getIdempotencyKey(),
                 transfer.getDescription(),
-                transfer.getCreatedAt()
+                transfer.getCreatedAt(),
+                transfer.getReversalOf()
         );
     }
 }
