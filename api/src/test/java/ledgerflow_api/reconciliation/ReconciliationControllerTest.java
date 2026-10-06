@@ -1,6 +1,7 @@
 package ledgerflow_api.reconciliation;
 
 import java.util.UUID;
+import java.math.BigDecimal;
 import ledgerflow_api.TestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -41,22 +43,24 @@ class ReconciliationControllerTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("MISMATCH"))
             .andExpect(jsonPath("$.mismatchedAccountCount").value(1))
             .andExpect(jsonPath("$.accounts[0].difference").value("1.00"));
+        assertThat(jdbc.queryForObject("SELECT current_balance FROM accounts", BigDecimal.class))
+            .isEqualByComparingTo("1000000001.00");
     }
 
     @Test void detectsMissingUnequalAndDuplicateJournalPairs() throws Exception {
         UUID account = UUID.randomUUID();
         UUID treasury = UUID.fromString("00000000-0000-0000-0000-000000000001");
         jdbc.update("INSERT INTO accounts (id,name,type,opening_balance,current_balance) VALUES (?,'Target','BANK',0,0)", account);
-        for (int count : new int[]{0, 1, 2, 4}) {
+        for (int count : new int[]{0, 1, 2, 4, 6}) {
             UUID transfer = UUID.randomUUID();
             jdbc.update("INSERT INTO transfers (id,source_account_id,target_account_id,amount,status,idempotency_key) VALUES (?,?,?,10,'COMPLETED',?)", transfer, treasury, account, transfer.toString());
-            for (int i = 0; i < count; i++) {
-                jdbc.update("INSERT INTO ledger_entries (id,transfer_id,account_id,direction,amount) VALUES (?,?,?,?,?)", UUID.randomUUID(), transfer, i % 2 == 0 ? treasury : account, i % 2 == 0 ? "DEBIT" : "CREDIT", count == 2 && i == 1 ? 9 : 10);
+            for (int i = 0; i < (count == 6 ? 2 : count); i++) {
+                jdbc.update("INSERT INTO ledger_entries (id,transfer_id,account_id,direction,amount) VALUES (?,?,?,?,?)", UUID.randomUUID(), transfer, count == 6 ? (i % 2 == 0 ? account : treasury) : (i % 2 == 0 ? treasury : account), i % 2 == 0 ? "DEBIT" : "CREDIT", count == 2 && i == 1 ? 9 : 10);
             }
         }
         mvc.perform(get("/api/reconciliation").with(user("reader").roles("AUDITOR")))
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("MISMATCH"))
-            .andExpect(jsonPath("$.unbalancedTransferCount").value(4));
+            .andExpect(jsonPath("$.unbalancedTransferCount").value(5));
     }
 
     @Test void acceptsCorrectTransferAndAccountBalances() throws Exception {

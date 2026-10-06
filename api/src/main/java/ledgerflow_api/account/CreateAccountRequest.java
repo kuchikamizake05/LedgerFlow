@@ -2,6 +2,7 @@ package ledgerflow_api.account;
 
 import java.math.BigDecimal;
 
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -12,6 +13,6 @@ public record CreateAccountRequest(
 
         @NotNull(message = "Account type is required") AccountType type,
 
-        @NotNull(message = "Opening balance is required") @PositiveOrZero(message = "Opening balance must be zero or positive") BigDecimal openingBalance) {
+        @NotNull(message = "Opening balance is required") @PositiveOrZero(message = "Opening balance must be zero or positive") @Digits(integer = 17, fraction = 2) BigDecimal openingBalance) {
 
 }

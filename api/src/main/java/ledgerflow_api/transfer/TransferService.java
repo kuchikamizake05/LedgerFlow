@@ -39,18 +39,35 @@ public class TransferService {
 
     @Transactional
     public TransferResponse deposit(UUID targetAccountId, DepositRequest request) {
-        CreateTransferRequest transferRequest = new CreateTransferRequest(
-                SYSTEM_TREASURY_ID,
-                targetAccountId,
-                request.amount(),
-                request.idempotencyKey(),
-                request.description() != null ? request.description() : "Deposit / Top-up"
-        );
-        return executeTransfer(transferRequest).transfer();
+        return executeDeposit(targetAccountId, request).transfer();
+    }
+
+    @Transactional
+    public TransferExecutionResult executeDeposit(UUID targetAccountId, DepositRequest request) {
+        return executeInternalTransfer(depositTransferRequest(targetAccountId, request));
+    }
+
+    private CreateTransferRequest depositTransferRequest(UUID targetAccountId, DepositRequest request) {
+        return new CreateTransferRequest(SYSTEM_TREASURY_ID, targetAccountId,
+                request.amount(), request.idempotencyKey(),
+                request.description() != null ? request.description() : "Deposit / Top-up");
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<TransferExecutionResult> findDepositReplayAfterDuplicateKey(UUID targetAccountId, DepositRequest request) {
+        return findReplayAfterDuplicateKey(depositTransferRequest(targetAccountId, request));
     }
 
     @Transactional
     public TransferExecutionResult executeTransfer(CreateTransferRequest request) {
+        if (SYSTEM_TREASURY_ID.equals(request.sourceAccountId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Treasury allocations must use the deposit endpoint");
+        }
+        return executeInternalTransfer(request);
+    }
+
+    private TransferExecutionResult executeInternalTransfer(CreateTransferRequest request) {
         // 1. Idempotency check: key yang sama hanya boleh dipakai untuk payload yang sama.
         Optional<Transfer> existing = transferRepository.findByIdempotencyKey(request.idempotencyKey());
         if (existing.isPresent()) {
@@ -79,11 +96,22 @@ public class TransferService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         secondId.equals(request.sourceAccountId()) ? "Source account not found" : "Target account not found"));
 
+        // A competing request may have committed while this transaction waited for the locks.
+        existing = transferRepository.findByIdempotencyKey(request.idempotencyKey());
+        if (existing.isPresent()) {
+            validateMatchingIdempotencyPayload(existing.get(), request);
+            return new TransferExecutionResult(TransferResponse.from(existing.get()), true);
+        }
+
         Account source = firstId.equals(request.sourceAccountId()) ? firstLocked : secondLocked;
         Account target = firstId.equals(request.targetAccountId()) ? firstLocked : secondLocked;
         // 4. Cek kecukupan saldo
         if (source.getCurrentBalance().compareTo(request.amount()) < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance");
+        }
+        if (target.getCurrentBalance().add(request.amount())
+                .compareTo(new java.math.BigDecimal("99999999999999999.99")) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Destination balance exceeds the supported maximum");
         }
 
         // 5. Update saldo (In-memory projection)

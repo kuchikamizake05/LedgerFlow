@@ -6,6 +6,8 @@ import ledgerflow_api.transfer.LedgerDirection;
 import ledgerflow_api.transfer.TransferService;
 import ledgerflow_api.transfer.DepositRequest;
 import ledgerflow_api.transfer.TransferResponse;
+import ledgerflow_api.transfer.TransferExecutionResult;
+import org.springframework.dao.DataIntegrityViolationException;
 import ledgerflow_api.common.PageResponse;
 
 import org.springframework.http.HttpStatus;
@@ -62,7 +64,15 @@ public class AccountController {
             @PathVariable UUID id,
             @Valid @RequestBody DepositRequest request
     ) {
-        TransferResponse response = transferService.deposit(id, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        try {
+            TransferExecutionResult result = transferService.executeDeposit(id, request);
+            return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                    .body(result.transfer());
+        } catch (DataIntegrityViolationException exception) {
+            // The service transaction has rolled back before querying the winning request.
+            return transferService.findDepositReplayAfterDuplicateKey(id, request)
+                    .map(replay -> ResponseEntity.ok(replay.transfer()))
+                    .orElseThrow(() -> exception);
+        }
     }
 }
