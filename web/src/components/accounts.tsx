@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Account, TREASURY, cents, money, shortId, stamp } from "@/lib/domain";
+import { Account, TREASURY, api, cents, money, shortId, stamp } from "@/lib/domain";
 import { Icon, useWorkspace } from "./workspace";
 import { Copy, Empty, Modal, Notice, PageHeading } from "./ui";
 import { useFeedback } from "./feedback";
@@ -37,6 +37,10 @@ export function AccountsPage() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [statusAccount, setStatusAccount] = useState<Account>();
+  const [statusReason, setStatusReason] = useState("");
+  const [statusError, setStatusError] = useState("");
+  const [statusBusy, setStatusBusy] = useState(false);
   const accounts = store.accounts.filter((a) => a.id !== TREASURY);
   const unavailable = store.mode === "live" && !store.checked;
   const filtered = accounts
@@ -207,6 +211,7 @@ export function AccountsPage() {
                     Current balance ↓
                   </button>
                 </th>
+                <th>Status</th>
                 <th>Created</th>
                 <th>Actions</th>
               </tr>
@@ -238,6 +243,7 @@ export function AccountsPage() {
                   </td>
                   <td className="number muted">{money(a.openingBalance)}</td>
                   <td className="number">{money(a.currentBalance)}</td>
+                  <td><span className="badge">{a.frozen ? "Frozen" : "Active"}</span></td>
                   <td className="date">{stamp(a.createdAt)}</td>
                   <td>
                     <DropdownMenu>
@@ -256,7 +262,7 @@ export function AccountsPage() {
                             View statement
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            disabled={!store.permissions.transfer}
+                            disabled={!store.permissions.transfer || !!a.frozen}
                             render={
                               <Link href={`/transfers?account=${a.id}`} />
                             }
@@ -267,11 +273,20 @@ export function AccountsPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuGroup>
                           <DropdownMenuItem
-                            disabled={!store.permissions.deposit}
+                            disabled={!store.permissions.deposit || !!a.frozen}
                             render={<Link href={`/treasury?account=${a.id}`} />}
                           >
                             Allocate from treasury
                           </DropdownMenuItem>
+                          {store.mode === "live" && store.role === "TREASURY_ADMIN" && (
+                            <DropdownMenuItem onClick={() => {
+                              setStatusAccount(a);
+                              setStatusReason("");
+                              setStatusError("");
+                            }}>
+                              {a.frozen ? "Unfreeze account" : "Freeze account"}
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuGroup>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -317,6 +332,37 @@ export function AccountsPage() {
           </div>
         </div>
       </section>
+      {statusAccount && (
+        <Modal title={statusAccount.frozen ? "Unfreeze account" : "Freeze account"}
+          onClose={() => { if (!statusBusy) setStatusAccount(undefined); }}>
+          <p>{statusAccount.name}</p>
+          <Notice>{statusAccount.frozen ? "Allow new money movements for this account." : "Block new money movements into and out of this account. Existing records remain readable."}</Notice>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (statusBusy || store.mode !== "live" || store.role !== "TREASURY_ADMIN") return;
+            const reason = statusReason.trim();
+            if (!reason || reason.length > 255) return;
+            setStatusBusy(true);
+            setStatusError("");
+            try {
+              await api<Account>(`accounts/${statusAccount.id}/${statusAccount.frozen ? "unfreeze" : "freeze"}`, { reason });
+              await store.refresh();
+              setStatusAccount(undefined);
+            } catch (e) {
+              setStatusError(`${(e as Error).message} Refresh the account status before retrying if confirmation is uncertain.`);
+            } finally { setStatusBusy(false); }
+          }}>
+            <label>Reason for status change
+              <textarea aria-label="Reason for status change" maxLength={255} value={statusReason}
+                disabled={statusBusy} onChange={(e) => setStatusReason(e.target.value)} required />
+            </label>
+            {statusError && <Notice danger>{statusError}</Notice>}
+            <button className="primary" disabled={statusBusy || !statusReason.trim() || statusReason.length > 255}>
+              {statusBusy ? "Submitting…" : statusAccount.frozen ? "Confirm unfreeze" : "Confirm freeze"}
+            </button>
+          </form>
+        </Modal>
+      )}
       {open && (
         <Modal
           title="Create account"

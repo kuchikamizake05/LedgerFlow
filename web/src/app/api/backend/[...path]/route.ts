@@ -9,7 +9,7 @@ async function forward(
     `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|audit|auth/me|health|reconciliation)$`,
   );
   const write = new RegExp(
-    `^(accounts|transfers|accounts/${uuid}/deposits|transfers/${uuid}/reversal)$`,
+    `^(accounts|transfers|accounts/${uuid}/(deposits|freeze|unfreeze)|transfers/${uuid}/reversal)$`,
   );
   if (!(request.method === "GET" ? read : write).test(path))
     return NextResponse.json(

@@ -1,4 +1,5 @@
 export type Account = {
+  frozen?: boolean;
   id: string;
   name: string;
   type: "BANK" | "CASH" | "EWALLET";
