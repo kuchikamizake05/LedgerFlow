@@ -159,7 +159,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       </p>
       <footer className="auth-security-note">
         <LockKeyhole />
-        Signed session · Operational activity is audited
+        Signed session · Access follows your assigned role
       </footer>
     </AuthFrame>
   );

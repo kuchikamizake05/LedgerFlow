@@ -82,8 +82,8 @@ export function StatusPage() {
     },
     {
       name: "Ledger reconciliation",
-      status: "NOT CONFIGURED",
-      evidence: "No global reconciliation endpoint is available.",
+      status: "NOT CHECKED",
+      evidence: "Run a read-only reconciliation check from the Ledger page.",
     },
   ];
   return (

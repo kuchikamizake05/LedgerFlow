@@ -45,7 +45,7 @@ export function decimal(value: bigint) {
   return `${value / BigInt(100)}.${(value % BigInt(100)).toString().padStart(2, "0")}`;
 }
 export function money(value: string | bigint) {
-  const n = typeof value === "bigint" ? value : cents(value);
+  const n = typeof value === "bigint" ? value : value.startsWith("-") ? -cents(value.slice(1)) : cents(value);
   const positive = n < BigInt(0) ? -n : n;
   return `${n < BigInt(0) ? "−" : ""}Rp ${(positive / BigInt(100)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${(positive % BigInt(100)).toString().padStart(2, "0")}`;
 }
@@ -144,6 +144,9 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     signal: AbortSignal.timeout(15000),
     cache: "no-store",
   });
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ledgerflow-session-expired"));
+  }
   const result = await response.json();
   if (!response.ok)
     throw new ApiError(
@@ -152,3 +155,22 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     );
   return result as T;
 }
+
+export type Role = "AUDITOR" | "OPERATOR" | "TREASURY_ADMIN";
+export function permissions(mode: "demo" | "live", role: Role | null) {
+  const demo = mode === "demo";
+  return {
+    create: demo || role === "TREASURY_ADMIN",
+    transfer: demo || role === "OPERATOR" || role === "TREASURY_ADMIN",
+    deposit: demo || role === "TREASURY_ADMIN",
+  };
+}
+export type Reconciliation = {
+  checkedAt: string;
+  status: "BALANCED" | "MISMATCH";
+  accountCount: number;
+  mismatchedAccountCount: number;
+  unbalancedTransferCount: number;
+  accounts: { accountId: string; openingBalance: string; currentBalance: string; expectedBalance: string; difference: string; status: "BALANCED" | "MISMATCH" }[];
+  unbalancedTransfers: { transferId: string; debitTotal: string; creditTotal: string; difference: string; entryCount: number }[];
+};

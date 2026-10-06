@@ -14,6 +14,8 @@ import {
   Entry,
   Transfer,
   api,
+  permissions,
+  Role,
   cents,
   decimal,
   demoAccounts,
@@ -41,6 +43,9 @@ import {
 
 type Store = {
   mode: "demo" | "live";
+  role: Role | null;
+  sessionEmail: string | null;
+  permissions: ReturnType<typeof permissions>;
   accounts: Account[];
   entries: Entry[];
   transfers: Transfer[];
@@ -111,10 +116,23 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const [pendingLiveMode, setPendingLiveMode] = useState(false);
   const [session, setSession] = useState<SessionUser | null>(null);
   const generation = useRef(0);
+  const allowed = permissions(mode, session?.role ?? null);
+  useEffect(() => {
+    function expired() {
+      setSession(null);
+      router.replace("/auth/login");
+      router.refresh();
+    }
+    window.addEventListener("ledgerflow-session-expired", expired);
+    return () => window.removeEventListener("ledgerflow-session-expired", expired);
+  }, [router]);
   useEffect(() => {
     let active = true;
     void fetch("/api/auth/session", { cache: "no-store" })
-      .then(async (response) => (response.ok ? ((await response.json()) as SessionUser) : null))
+      .then(async (response) => {
+        if (response.status === 401) window.dispatchEvent(new Event("ledgerflow-session-expired"));
+        return response.ok ? ((await response.json()) as SessionUser) : null;
+      })
       .then((user) => {
         if (active) setSession(user);
       })
@@ -171,6 +189,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   async function create(
     data: Pick<Account, "name" | "type" | "openingBalance">,
   ) {
+    if (!allowed.create) throw new Error("Your role cannot create accounts.");
     if (mode === "live") {
       setLoading(true);
       try {
@@ -194,6 +213,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     data: Omit<Transfer, "id" | "status" | "createdAt">,
     deposit: boolean,
   ) {
+    if (!(deposit ? allowed.deposit : allowed.transfer)) throw new Error("Your role cannot perform this operation.");
     if (mode === "live") {
       setLoading(true);
       try {
@@ -268,6 +288,9 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     <Context.Provider
       value={{
         mode,
+        role: session?.role ?? null,
+        sessionEmail: session?.email ?? null,
+        permissions: allowed,
         accounts,
         entries,
         transfers,

@@ -14,7 +14,7 @@ export async function GET() {
     });
     const data = await response.json();
     const result = NextResponse.json(data, { status: response.status });
-    if (!response.ok) result.cookies.delete("ledgerflow_access_token");
+    if (response.status === 401) result.cookies.delete("ledgerflow_access_token");
     return result;
   } catch {
     return NextResponse.json({ message: "Authentication service is unavailable." }, { status: 502 });

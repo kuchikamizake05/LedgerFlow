@@ -11,6 +11,7 @@ import {
   stamp,
 } from "@/lib/domain";
 import { useWorkspace } from "./workspace";
+import { ReconciliationPanel } from "./reconciliation";
 import { Copy, Empty, Modal, Notice, PageHeading } from "./ui";
 import {
   Select,
@@ -287,16 +288,7 @@ export function LedgerPage() {
           </button>
         </div>
       </section>
-      <div className="reconciliation">
-        <span className="badge">PARTIAL VIEW</span>
-        <div>
-          <strong>Global reconciliation is not available</strong>
-          <p>
-            Account statements and filtered entries do not independently need to
-            balance. Inspect a transaction to compare its postings.
-          </p>
-        </div>
-      </div>
+      <ReconciliationPanel />
       {error && <Notice danger>{error}</Notice>}
       <section className="panel">
         <div className="table-scroll">

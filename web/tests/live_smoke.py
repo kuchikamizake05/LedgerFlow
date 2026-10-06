@@ -15,6 +15,7 @@ with sync_playwright() as p:
         page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "mock@example.test", "role": role}))
         page.route("**/api/backend/accounts", lambda route: route.fulfill(json=[ACCOUNT]))
         page.goto(BASE + "/accounts")
+        expect(page.get_by_text(role, exact=True)).to_be_visible()
         page.get_by_role("combobox", name="Data source").click()
         page.get_by_role("option", name="Local API").click()
         page.get_by_role("button", name="Continue to Local API").click()
@@ -57,6 +58,7 @@ with sync_playwright() as p:
     saved = {"email": "mock@example.test", "sourceAccountId": ACCOUNT["id"], "targetAccountId": "10000000-0000-4000-8000-000000000002", "amount": "1.00", "description": "Uncertain payment", "idempotencyKey": "recover-original", "deposit": False}
     page.add_init_script("sessionStorage.setItem('ledgerflow-pending-request', " + json.dumps(json.dumps(saved)) + ")")
     page.goto(BASE + "/transfers")
+    expect(page.get_by_text("OPERATOR", exact=True)).to_be_visible()
     expect(page.get_by_text("recover-original", exact=True)).to_be_visible()
     page.get_by_role("combobox", name="Data source").click()
     page.get_by_role("option", name="Local API").click()

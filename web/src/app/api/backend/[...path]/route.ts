@@ -6,7 +6,7 @@ async function forward(
 ) {
   const path = (await context.params).path.join("/");
   const read = new RegExp(
-    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|auth/me|health)$`,
+    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|auth/me|health|reconciliation)$`,
   );
   const write = new RegExp(`^(accounts|transfers|accounts/${uuid}/deposits)$`);
   if (!(request.method === "GET" ? read : write).test(path))
@@ -31,7 +31,7 @@ async function forward(
       );
     const base = process.env.LEDGERFLOW_API_URL || "http://127.0.0.1:8081";
     const response = await fetch(
-      `${base}${path === "health" ? "/actuator/health" : `/api/${path}`}`,
+      `${base}${path === "health" ? "/actuator/health" : `/api/${path}`}${request.nextUrl.search}`,
       {
         method: request.method,
         headers: {
@@ -50,7 +50,7 @@ async function forward(
     const raw = await response.text();
     const data = JSON.parse(
       raw.replace(
-        /("(?:amount|openingBalance|currentBalance)"\s*:\s*)(-?\d+(?:\.\d+)?)/g,
+        /("(?:amount|openingBalance|currentBalance|expectedBalance|difference|debitTotal|creditTotal)"\s*:\s*)(-?\d+(?:\.\d+)?)/g,
         '$1"$2"',
       ),
     );
@@ -62,7 +62,9 @@ async function forward(
         },
         { status: response.status },
       );
-    return NextResponse.json(data, { status: response.status });
+    const result = NextResponse.json(data, { status: response.status });
+    if (response.status === 401) result.cookies.delete("ledgerflow_access_token");
+    return result;
   } catch {
     return NextResponse.json(
       {

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   Transfer,
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/combobox";
 export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
   const store = useWorkspace();
+  const permitted = deposit ? store.permissions.deposit : store.permissions.transfer;
   const { notify } = useFeedback();
   const params = useSearchParams();
   const [source, setSource] = useState(
@@ -49,6 +50,21 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
   const [receipt, setReceipt] = useState<Transfer>();
   const [lab, setLab] = useState(false);
   const [unknown, setUnknown] = useState(false);
+  type Pending = { email: string; sourceAccountId: string; targetAccountId: string; amount: string; description: string; idempotencyKey: string; deposit: boolean };
+  const [pending, setPending] = useState<Pending>();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try {
+        const raw = sessionStorage.getItem("ledgerflow-pending-request");
+        const saved = raw ? JSON.parse(raw) as Pending : null;
+        if (saved && saved.email === store.sessionEmail && typeof saved.idempotencyKey === "string"
+          && typeof saved.sourceAccountId === "string" && typeof saved.targetAccountId === "string"
+          && typeof saved.amount === "string" && typeof saved.description === "string"
+          && typeof saved.deposit === "boolean") setPending(saved);
+      } catch { /* Browser storage can be unavailable. */ }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [store.sessionEmail, deposit]);
   const submitting = useRef(false);
   const from = store.accounts.find((a) => a.id === source);
   const to = store.accounts.find((a) => a.id === target);
@@ -70,10 +86,13 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
     setError("");
   }
   async function confirm() {
-    if (submitting.current) return;
+    if (submitting.current || !permitted || (store.mode === "live" && pending)) return;
     submitting.current = true;
     setBusy(true);
     setError("");
+    try {
+      if (store.mode === "live") sessionStorage.setItem("ledgerflow-pending-request", JSON.stringify({ email: store.sessionEmail, sourceAccountId: source, targetAccountId: target, amount, description: note, idempotencyKey: key, deposit }));
+    } catch { /* Preserve the in-memory reference when browser storage is blocked. */ }
     try {
       const result = await store.transfer(
         {
@@ -85,6 +104,10 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
         },
         deposit,
       );
+      if (store.mode === "live") {
+        try { sessionStorage.removeItem("ledgerflow-pending-request"); } catch { /* Storage unavailable. */ }
+        setPending(undefined);
+      }
       setReceipt(result);
       setReview(false);
       setUnknown(false);
@@ -94,6 +117,11 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
         description: `${money(result.amount)} · ${shortId(result.id)}`,
       });
     } catch (e) {
+      if (store.mode === "live" && e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 401) {
+        try { sessionStorage.removeItem("ledgerflow-pending-request"); } catch { /* Storage unavailable. */ }
+        setPending(undefined);
+        setUnknown(false);
+      }
       const message = (e as Error).message;
       setError(message);
       notify({
@@ -122,6 +150,13 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
             : "Move funds between accounts. Every movement has a trace."
         }
       />
+      {pending && <Notice>
+        Saved request reference <span className="mono">{pending.idempotencyKey}</span><Copy value={pending.idempotencyKey} />.
+        Verify this request in the ledger before retrying. {store.mode === "demo" ? "Switch to Local API to restore the original request." : pending.deposit !== deposit ? <Link href={pending.deposit ? "/treasury" : "/transfers"}>Open saved request</Link> : <button disabled={!permitted} onClick={() => {
+          setSource(pending.sourceAccountId); setTarget(pending.targetAccountId); setAmount(pending.amount);
+          setNote(pending.description); setKey(pending.idempotencyKey); setUnknown(true); setPending(undefined);
+        }}>Restore original request</button>}
+      </Notice>}
       {!deposit && (
         <div className="tabs">
           <button
@@ -221,6 +256,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
             </section>
           )}
           {store.error && <Notice danger>{store.error}</Notice>}
+          {!permitted && <Notice>Your signed-in role has read-only access to this operation.</Notice>}
           <div className="split-workspace">
             <section className="form-panel">
               <div className="section-heading">
@@ -230,6 +266,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (store.mode === "live" && pending) return;
                   setError("");
                   try {
                     if (!from || !to)
@@ -258,7 +295,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                   }
                 }}
               >
-                <fieldset disabled={busy || unknown || !!receipt}>
+                <fieldset disabled={busy || unknown || !!receipt || !permitted}>
                   {!deposit && (
                     <label>
                       Source account
@@ -391,7 +428,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                   </span>
                   <button
                     className="primary"
-                    disabled={busy || unknown || !!receipt || store.loading}
+                    disabled={busy || unknown || !!receipt || store.loading || !permitted || (store.mode === "live" && !!pending)}
                   >
                     Review {deposit ? "allocation" : "transfer"}
                     <Icon name="arrow" />

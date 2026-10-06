@@ -11,7 +11,7 @@ import {
 test("live role permissions fail closed; demo allows simulated operations", () => {
   assert.equal(typeof domain.permissions, "function");
   assert.deepEqual(domain.permissions("live", "AUDITOR"), { create: false, transfer: false, deposit: false });
-  assert.deepEqual(domain.permissions("live", "OPERATOR"), { create: true, transfer: true, deposit: false });
+  assert.deepEqual(domain.permissions("live", "OPERATOR"), { create: false, transfer: true, deposit: false });
   assert.deepEqual(domain.permissions("live", "TREASURY_ADMIN"), { create: true, transfer: true, deposit: true });
   assert.deepEqual(domain.permissions("live", null), { create: false, transfer: false, deposit: false });
   assert.deepEqual(domain.permissions("demo", "AUDITOR"), { create: true, transfer: true, deposit: true });

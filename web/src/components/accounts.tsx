@@ -59,7 +59,7 @@ export function AccountsPage() {
         title="Accounts"
         description="Balances and account records."
         action={
-          <button className="primary" onClick={() => setOpen(true)}>
+          <button className="primary" disabled={!store.permissions.create} onClick={() => setOpen(true)}>
             <Icon name="plus" />
             Create account
           </button>
@@ -256,6 +256,7 @@ export function AccountsPage() {
                             View statement
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            disabled={!store.permissions.transfer}
                             render={
                               <Link href={`/transfers?account=${a.id}`} />
                             }
@@ -266,6 +267,7 @@ export function AccountsPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuGroup>
                           <DropdownMenuItem
+                            disabled={!store.permissions.deposit}
                             render={<Link href={`/treasury?account=${a.id}`} />}
                           >
                             Allocate from treasury
@@ -405,7 +407,7 @@ export function AccountsPage() {
               >
                 Cancel
               </button>
-              <button className="primary" disabled={busy}>
+              <button className="primary" disabled={busy || !store.permissions.create}>
                 {busy ? "Creating…" : "Create account"}
               </button>
             </div>

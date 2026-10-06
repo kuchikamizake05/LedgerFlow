@@ -8,6 +8,9 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     page.set_default_timeout(15000)
+    # Isolated browser session; no real credentials or database writes.
+    page.context.add_cookies([{"name": "ledgerflow_access_token", "value": "smoke-only", "url": BASE}])
+    page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "smoke@example.test", "role": "AUDITOR"}))
     output = Path(__file__).parent / "artifacts"
     output.mkdir(exist_ok=True)
     errors = []
