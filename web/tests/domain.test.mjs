@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as domain from "../src/lib/domain.ts";
 import {
   cents,
   decimal,
@@ -7,6 +8,17 @@ import {
   demoAccounts,
   demoEntries,
 } from "../src/lib/domain.ts";
+test("live role permissions fail closed; demo allows simulated operations", () => {
+  assert.equal(typeof domain.permissions, "function");
+  assert.deepEqual(domain.permissions("live", "AUDITOR"), { create: false, transfer: false, deposit: false });
+  assert.deepEqual(domain.permissions("live", "OPERATOR"), { create: true, transfer: true, deposit: false });
+  assert.deepEqual(domain.permissions("live", "TREASURY_ADMIN"), { create: true, transfer: true, deposit: true });
+  assert.deepEqual(domain.permissions("live", null), { create: false, transfer: false, deposit: false });
+  assert.deepEqual(domain.permissions("demo", "AUDITOR"), { create: true, transfer: true, deposit: true });
+});
+test("signed reconciliation differences keep exact precision", () => {
+  assert.equal(money("-99999999999999999.99"), "−Rp 99.999.999.999.999.999,99");
+});
 test("money retains precision above Number safe integer range", () => {
   assert.equal(cents("99999999999999999.99"), 9999999999999999999n);
   assert.equal(money("99999999999999999.99"), "Rp 99.999.999.999.999.999,99");
