@@ -1,6 +1,7 @@
 package ledgerflow_api.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -8,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
 import ledgerflow_api.TestcontainersConfiguration;
 import ledgerflow_api.audit.AuditEventRepository;
@@ -34,7 +37,6 @@ class UserManagementTest {
 
     @BeforeEach
     void clearTestRows() {
-        jdbc.update("delete from audit_events");
         jdbc.update("delete from app_users");
     }
 
@@ -51,6 +53,10 @@ class UserManagementTest {
                 .andExpect(jsonPath("$.totalElements").value(2))
                 .andExpect(jsonPath("$.content[0].passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.content[0].password").doesNotExist());
+        mvc.perform(get("/api/users?page=-1").header("Authorization", bearer(admin)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/users?size=101").header("Authorization", bearer(admin)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -83,7 +89,9 @@ class UserManagementTest {
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
 
         assertThat(auditEvents.count()).isEqualTo(before + 1);
-        var event = auditEvents.findAll().stream().filter(e -> e.getAction().equals("USER_ROLE_CHANGED")).findFirst().orElseThrow();
+        var event = auditEvents.findAll().stream()
+                .filter(e -> e.getAction().equals("USER_ROLE_CHANGED") && e.getResourceId().equals(target.getId()))
+                .findFirst().orElseThrow();
         assertThat(event.getActorId()).isEqualTo(admin.getId());
         assertThat(event.getActorRole()).isEqualTo("TREASURY_ADMIN");
         assertThat(event.getResourceId()).isEqualTo(target.getId());
@@ -112,6 +120,26 @@ class UserManagementTest {
         mvc.perform(post(path).header("Authorization", bearer(admin)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"AUDITOR\",\"reason\":\"" + "x".repeat(256) + "\"}"))
                 .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/users/{id}/role", UUID.randomUUID()).header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"AUDITOR\",\"reason\":\"valid\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void preservesTheFullMaximumLengthReasonInTheAuditRecord() throws Exception {
+        AppUser admin = user(AppRole.TREASURY_ADMIN);
+        AppUser target = user(AppRole.OPERATOR);
+        String reason = "r".repeat(255);
+
+        mvc.perform(post("/api/users/{id}/role", target.getId()).header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"AUDITOR\",\"reason\":\"" + reason + "\"}"))
+                .andExpect(status().isOk());
+
+        var event = auditEvents.findAll().stream().filter(e -> e.getResourceId().equals(target.getId())).findFirst().orElseThrow();
+        assertThat(event.getDescription()).endsWith(reason);
+        assertThat(event.getDescription().length()).isLessThanOrEqualTo(512);
     }
 
     @Test
@@ -126,13 +154,25 @@ class UserManagementTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("TREASURY_ADMIN"));
 
+        AppUser target = user(AppRole.OPERATOR);
+        mvc.perform(post("/api/users/{id}/role", target.getId()).header("Authorization", staleAuditorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"AUDITOR\",\"reason\":\"promoted actor\"}"))
+                .andExpect(status().isOk());
+        assertThat(auditEvents.findAll().stream().filter(e -> e.getResourceId().equals(target.getId()))
+                .findFirst().orElseThrow().getActorRole()).isEqualTo("TREASURY_ADMIN");
+
         AppUser unsaved = new AppUser("missing-" + UUID.randomUUID() + "@example.com", "unused", AppRole.TREASURY_ADMIN);
-        mvc.perform(get("/api/auth/me").header("Authorization", jwt.issue(unsaved).value()))
+        mvc.perform(get("/api/auth/me").header("Authorization", bearer(unsaved)))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/accounts").header("Authorization", bearer(unsaved)))
                 .andExpect(status().isUnauthorized());
 
         AppUser disabled = user(AppRole.AUDITOR);
         jdbc.update("update app_users set enabled = false where id = ?", disabled.getId());
         mvc.perform(get("/api/auth/me").header("Authorization", bearer(disabled)))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/accounts").header("Authorization", bearer(disabled)))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -169,10 +209,12 @@ class UserManagementTest {
         AppUser second = user(AppRole.TREASURY_ADMIN);
 
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var firstRequest = CompletableFuture.supplyAsync(() -> changeRole(first, second), executor);
-            var secondRequest = CompletableFuture.supplyAsync(() -> changeRole(second, first), executor);
-            int firstStatus = firstRequest.join();
-            int secondStatus = secondRequest.join();
+            var start = new CountDownLatch(1);
+            var firstRequest = CompletableFuture.supplyAsync(() -> changeRole(first, second, start), executor);
+            var secondRequest = CompletableFuture.supplyAsync(() -> changeRole(second, first, start), executor);
+            start.countDown();
+            int firstStatus = firstRequest.get(10, TimeUnit.SECONDS);
+            int secondStatus = secondRequest.get(10, TimeUnit.SECONDS);
             assertThat(java.util.List.of(firstStatus, secondStatus)).contains(200, 403);
             assertThat(users.findAll().stream().filter(u -> u.isEnabled() && u.getRole() == AppRole.TREASURY_ADMIN)).hasSize(1);
         }
@@ -182,12 +224,14 @@ class UserManagementTest {
     void auditFailureRollsBackRoleChange() throws Exception {
         AppUser admin = user(AppRole.TREASURY_ADMIN);
         AppUser target = user(AppRole.OPERATOR);
-        jdbc.execute("alter table audit_events add constraint reject_user_role_audit check (action <> 'USER_ROLE_CHANGED')");
+        jdbc.execute("alter table audit_events add constraint reject_user_role_audit check (resource_id <> '"
+                + target.getId() + "'::uuid)");
         try {
-            mvc.perform(post("/api/users/{id}/role", target.getId()).header("Authorization", bearer(admin))
+            assertThatThrownBy(() -> mvc.perform(post("/api/users/{id}/role", target.getId())
+                            .header("Authorization", bearer(admin))
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"role\":\"AUDITOR\",\"reason\":\"access review\"}"))
-                    .andExpect(status().is5xxServerError());
+                            .content("{\"role\":\"AUDITOR\",\"reason\":\"access review\"}")))
+                    .isInstanceOf(jakarta.servlet.ServletException.class);
             assertThat(users.findById(target.getId()).orElseThrow().getRole()).isEqualTo(AppRole.OPERATOR);
         } finally {
             jdbc.execute("alter table audit_events drop constraint reject_user_role_audit");
@@ -202,8 +246,11 @@ class UserManagementTest {
         return "Bearer " + jwt.issue(user).value();
     }
 
-    private int changeRole(AppUser actor, AppUser target) {
+    private int changeRole(AppUser actor, AppUser target, CountDownLatch start) {
         try {
+            if (!start.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Concurrent demotion barrier timed out");
+            }
             return mvc.perform(post("/api/users/{id}/role", target.getId())
                             .header("Authorization", bearer(actor))
                             .contentType(MediaType.APPLICATION_JSON)

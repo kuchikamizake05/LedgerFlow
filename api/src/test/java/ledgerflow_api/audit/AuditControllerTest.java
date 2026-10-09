@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuditControllerTest {
     @Autowired MockMvc mvc;
     @Autowired JwtService jwt;
+    @Autowired AppUserRepository users;
     @Autowired AccountRepository accounts;
     @Autowired TransferService transfers;
     @Autowired AuditService audit;
@@ -33,7 +34,7 @@ class AuditControllerTest {
     @Autowired PlatformTransactionManager transactionManager;
 
     @Test void recordsRealJwtActorAndAllowsEveryRoleToRead() throws Exception {
-        AppUser actor = new AppUser(UUID.randomUUID()+"@test.local", "never-serialize", AppRole.TREASURY_ADMIN);
+        AppUser actor = users.saveAndFlush(new AppUser(UUID.randomUUID()+"@test.local", "never-serialize", AppRole.TREASURY_ADMIN));
         String token = jwt.issue(actor).value();
         long before = jdbc.queryForObject("select count(*) from audit_events", Long.class);
         mvc.perform(post("/api/accounts").header("Authorization", "Bearer "+token)
@@ -42,7 +43,8 @@ class AuditControllerTest {
         assertThat(jdbc.queryForObject("select count(*) from audit_events", Long.class)).isEqualTo(before+1);
         for (AppRole role : AppRole.values()) {
             mvc.perform(get("/api/audit").param("action","ACCOUNT_CREATED").param("size","1")
-                    .header("Authorization", "Bearer "+jwt.issue(new AppUser("reader@test.local","unused",role)).value()))
+                    .header("Authorization", "Bearer "+jwt.issue(users.saveAndFlush(
+                            new AppUser(UUID.randomUUID()+"@reader.test.local","unused",role))).value()))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].actorId").value(actor.getId().toString()))
                     .andExpect(jsonPath("$.content[0].actorEmail").value(actor.getEmail()))
                     .andExpect(jsonPath("$.content[0].actorRole").value("TREASURY_ADMIN"))
@@ -57,7 +59,7 @@ class AuditControllerTest {
         CreateTransferRequest request=new CreateTransferRequest(source.getId(),target.getId(),BigDecimal.ONE,UUID.randomUUID().toString(),null);
         UUID id=transfers.executeTransfer(request).transfer().id();
         transfers.executeTransfer(request);
-        String token=jwt.issue(new AppUser("reader@test.local","unused",AppRole.AUDITOR)).value();
+        String token=jwt.issue(users.saveAndFlush(new AppUser(UUID.randomUUID()+"@reader.test.local","unused",AppRole.AUDITOR))).value();
         mvc.perform(get("/api/audit").param("resourceId",id.toString()).param("action","TRANSFER_COMPLETED")
                 .header("Authorization","Bearer "+token)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.content[0].actorRole").value("SYSTEM"));

@@ -23,6 +23,7 @@ import ledgerflow_api.account.AccountType;
 import ledgerflow_api.audit.AuditEventRepository;
 import ledgerflow_api.auth.AppRole;
 import ledgerflow_api.auth.AppUser;
+import ledgerflow_api.auth.AppUserRepository;
 import ledgerflow_api.auth.JwtService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,7 @@ class TransferApprovalControllerTest {
     @Autowired LedgerEntryRepository entries;
     @Autowired AuditEventRepository auditEvents;
     @Autowired JwtService jwt;
+    @Autowired AppUserRepository users;
     @Autowired ObjectMapper objectMapper;
     @Autowired JdbcTemplate jdbc;
 
@@ -454,7 +456,7 @@ class TransferApprovalControllerTest {
     }
 
     private AppUser user(AppRole role) {
-        return new AppUser(UUID.randomUUID() + "@approval.test", "unused", role);
+        return users.saveAndFlush(new AppUser(UUID.randomUUID() + "@approval.test", "unused", role));
     }
 
     private String bearer(AppUser user) {

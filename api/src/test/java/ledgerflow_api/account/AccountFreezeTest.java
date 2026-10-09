@@ -24,6 +24,7 @@ import ledgerflow_api.TestcontainersConfiguration;
 import ledgerflow_api.auth.AppRole;
 import ledgerflow_api.auth.AppUser;
 import ledgerflow_api.auth.JwtService;
+import ledgerflow_api.auth.AppUserRepository;
 import ledgerflow_api.transfer.CreateTransferRequest;
 import ledgerflow_api.transfer.LedgerEntryRepository;
 import ledgerflow_api.transfer.TransferRepository;
@@ -40,6 +41,7 @@ class AccountFreezeTest {
     @Autowired LedgerEntryRepository entries;
     @Autowired TransferService transferService;
     @Autowired JwtService jwt;
+    @Autowired AppUserRepository users;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper objectMapper;
 
@@ -231,7 +233,7 @@ class AccountFreezeTest {
     }
 
     private String bearer(AppUser user) {
-        return "Bearer " + jwt.issue(user).value();
+        return "Bearer " + jwt.issue(users.saveAndFlush(user)).value();
     }
 
     private String sourceToken(AppUser user) { return bearer(user); }

@@ -28,7 +28,7 @@ public class AuditEvent {
     @Column(name = "resource_id", nullable = false)
     private UUID resourceId;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false, length = 512)
     private String description;
 
     @Column(name = "created_at", nullable = false, updatable = false)

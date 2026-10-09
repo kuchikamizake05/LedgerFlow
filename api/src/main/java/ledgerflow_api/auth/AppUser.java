@@ -60,6 +60,10 @@ public class AppUser {
         return role;
     }
 
+    public void changeRole(AppRole role) {
+        this.role = role;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

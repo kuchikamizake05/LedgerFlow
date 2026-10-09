@@ -28,6 +28,9 @@ class AuthControllerTest {
     @Autowired
     private JwtService jwtService;
 
+    @Autowired
+    private AppUserRepository users;
+
     @Test
     void shouldRegisterAuditorWithoutExposingPassword() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -140,7 +143,8 @@ class AuthControllerTest {
     }
 
     private String tokenFor(AppRole role) {
-        AppUser user = new AppUser(role.name().toLowerCase() + "@example.com", "not-used-in-this-test", role);
+        AppUser user = users.saveAndFlush(new AppUser(
+                role.name().toLowerCase() + "@example.com", "not-used-in-this-test", role));
         return jwtService.issue(user).value();
     }
 }

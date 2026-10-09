@@ -20,9 +20,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest @AutoConfigureMockMvc @Import(TestcontainersConfiguration.class)
 class TransactionHardeningTest {
  @Autowired MockMvc mvc; @Autowired AccountRepository accounts;
- @Autowired TransferRepository transfers; @Autowired LedgerEntryRepository entries; @Autowired JwtService jwt; @Autowired TransferService transferService;
+ @Autowired TransferRepository transfers; @Autowired LedgerEntryRepository entries; @Autowired JwtService jwt; @Autowired TransferService transferService; @Autowired AppUserRepository users;
  int send(String path,String body,AppRole role) throws Exception {
-  String token=jwt.issue(new AppUser(UUID.randomUUID()+"@test.local","unused",role)).value();
+  String token=jwt.issue(users.saveAndFlush(new AppUser(UUID.randomUUID()+"@test.local","unused",role))).value();
   return mvc.perform(post(path).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().getResponse().getStatus();
  }
  Account account(String amount) {return accounts.saveAndFlush(new Account("Hardening",AccountType.BANK,new BigDecimal(amount)));}

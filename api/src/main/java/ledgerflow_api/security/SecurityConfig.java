@@ -1,6 +1,11 @@
 package ledgerflow_api.security;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import ledgerflow_api.auth.AppUser;
+import ledgerflow_api.auth.AppUserRepository;
 import ledgerflow_api.auth.AppRole;
 import ledgerflow_api.auth.JwtService;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +23,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -31,8 +37,28 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(JwtService jwtService) {
-        return jwtService.decoder();
+    JwtDecoder jwtDecoder(JwtService jwtService, AppUserRepository users) {
+        JwtDecoder signatureDecoder = jwtService.decoder();
+        return token -> {
+            Jwt verified = signatureDecoder.decode(token);
+            final UUID userId;
+            try {
+                userId = UUID.fromString(verified.getSubject());
+            } catch (IllegalArgumentException exception) {
+                throw new BadJwtException("Token subject is invalid", exception);
+            }
+            AppUser user = users.findById(userId)
+                    .filter(AppUser::isEnabled)
+                    .orElseThrow(() -> new BadJwtException("Token user is missing or disabled"));
+
+            Map<String, Object> effectiveClaims = new HashMap<>(verified.getClaims());
+            effectiveClaims.put("email", user.getEmail());
+            effectiveClaims.put("role", user.getRole().name());
+            return Jwt.withTokenValue(verified.getTokenValue())
+                    .headers(headers -> headers.putAll(verified.getHeaders()))
+                    .claims(claims -> claims.putAll(effectiveClaims))
+                    .build();
+        };
     }
 
     @Bean
@@ -49,6 +75,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/users").hasRole(AppRole.TREASURY_ADMIN.name())
+                        .requestMatchers(HttpMethod.POST, "/api/users/*/role").hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/transfers/*/reversal")
                         .hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole(

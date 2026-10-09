@@ -28,6 +28,7 @@ class ReversalTest {
     @Autowired LedgerEntryRepository entries;
     @Autowired TransferService service;
     @Autowired JwtService jwt;
+    @Autowired AppUserRepository users;
     @Autowired JdbcTemplate jdbc;
     @Autowired ReconciliationService reconciliation;
     Account account(String amount) { return accounts.saveAndFlush(new Account("Reversal", AccountType.BANK, new BigDecimal(amount))); }
@@ -35,7 +36,7 @@ class ReversalTest {
         return service.executeTransfer(new CreateTransferRequest(account("10").getId(), account("0").getId(), new BigDecimal("10"), UUID.randomUUID().toString(), "original")).transfer();
     }
     int reverse(UUID id, String key, String reason, AppRole role) throws Exception {
-        String token = jwt.issue(new AppUser(UUID.randomUUID()+"@test.local", "unused", role)).value();
+        String token = jwt.issue(users.saveAndFlush(new AppUser(UUID.randomUUID()+"@test.local", "unused", role))).value();
         return mvc.perform(post("/api/transfers/"+id+"/reversal").header("Authorization", "Bearer "+token).contentType(MediaType.APPLICATION_JSON)
             .content("{\"idempotencyKey\":\""+key+"\",\"reason\":\""+reason+"\"}")).andReturn().getResponse().getStatus();
     }
@@ -84,7 +85,7 @@ class ReversalTest {
         BigDecimal targetBefore = accounts.findById(original.sourceAccountId()).orElseThrow().getCurrentBalance();
         long ledgerCountBefore = entries.count();
         long transferCountBefore = transfers.count();
-        String token = jwt.issue(new AppUser(UUID.randomUUID()+"@test.local", "unused", AppRole.OPERATOR)).value();
+        String token = jwt.issue(users.saveAndFlush(new AppUser(UUID.randomUUID()+"@test.local", "unused", AppRole.OPERATOR))).value();
 
         mvc.perform(post("/api/transfer-requests").header("Authorization", "Bearer "+token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -100,7 +101,7 @@ class ReversalTest {
     }
     @Test void writesOneReversalAuditEventWithTheAuthenticatedAdminActor() throws Exception {
         TransferResponse original = original();
-        AppUser actor = new AppUser("reverser@test.local", "unused", AppRole.TREASURY_ADMIN);
+        AppUser actor = users.saveAndFlush(new AppUser(UUID.randomUUID()+"@test.local", "unused", AppRole.TREASURY_ADMIN));
         String token = jwt.issue(actor).value();
         long before = jdbc.queryForObject("select count(*) from audit_events where action='TRANSFER_REVERSED' and resource_id=?",
             Long.class, original.id());
