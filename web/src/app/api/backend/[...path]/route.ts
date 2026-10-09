@@ -6,10 +6,10 @@ async function forward(
 ) {
   const path = (await context.params).path.join("/");
   const read = new RegExp(
-    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|transfer-requests(/${uuid})?|audit|auth/me|health|reconciliation)$`,
+    `^(accounts|accounts/${uuid}(/statement)?|transfers/${uuid}(/entries)?|transfer-requests(/${uuid})?|users|audit|auth/me|health|reconciliation)$`,
   );
   const write = new RegExp(
-    `^(accounts|transfers|transfer-requests|transfer-requests/${uuid}/(approve|reject)|accounts/${uuid}/(deposits|freeze|unfreeze)|transfers/${uuid}/reversal)$`,
+    `^(accounts|transfers|transfer-requests|transfer-requests/${uuid}/(approve|reject)|users/${uuid}/role|accounts/${uuid}/(deposits|freeze|unfreeze)|transfers/${uuid}/reversal)$`,
   );
   if (!(request.method === "GET" ? read : write).test(path))
     return NextResponse.json(

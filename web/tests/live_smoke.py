@@ -13,7 +13,7 @@ with sync_playwright() as p:
         context = browser.new_context()
         context.add_cookies([{"name": "ledgerflow_access_token", "value": "mock-only", "url": BASE}])
         page = context.new_page()
-        page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "mock@example.test", "role": role}))
+        page.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000001", "email": "mock@example.test", "role": role}))
         page.route("**/api/backend/accounts", lambda route: route.fulfill(json=[ACCOUNT]))
         page.goto(BASE + "/accounts")
         expect(page.get_by_text(role, exact=True)).to_be_visible()
@@ -54,7 +54,7 @@ with sync_playwright() as p:
     context = browser.new_context()
     context.add_cookies([{"name": "ledgerflow_access_token", "value": "mock-only", "url": BASE}])
     page = context.new_page()
-    page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "mock@example.test", "role": "OPERATOR"}))
+    page.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000001", "email": "mock@example.test", "role": "OPERATOR"}))
     page.route("**/api/backend/accounts", lambda route: route.fulfill(json=[ACCOUNT, DESTINATION]))
     submissions = []
     def submit_request(route):

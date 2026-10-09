@@ -117,7 +117,7 @@ with sync_playwright() as playwright:
             return route.fulfill(json=item)
         return route.fulfill(status=404, json={"message": f"Unexpected mock request: {path}"})
 
-    page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": ADMIN, "role": "TREASURY_ADMIN"}))
+    page.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000001", "email": ADMIN, "role": "TREASURY_ADMIN"}))
     page.route("**/api/backend/**", backend)
     page.goto(BASE + "/approvals")
     page.get_by_role("combobox", name="Data source").click()
@@ -168,7 +168,7 @@ with sync_playwright() as playwright:
     operator_context = browser.new_context()
     operator_context.add_cookies([{"name": "ledgerflow_access_token", "value": "mock-only", "url": BASE}])
     operator = operator_context.new_page()
-    operator.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "operator@example.test", "role": "OPERATOR"}))
+    operator.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000002", "email": "operator@example.test", "role": "OPERATOR"}))
     operator.route("**/api/backend/**", backend)
     operator.goto(BASE + "/approvals")
     operator.get_by_role("combobox", name="Data source").click()

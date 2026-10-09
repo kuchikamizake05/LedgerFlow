@@ -17,6 +17,7 @@ import {
   api,
   permissions,
   Role,
+  User,
   cents,
   decimal,
   demoAccounts,
@@ -46,6 +47,7 @@ type Store = {
   mode: "demo" | "live";
   role: Role | null;
   sessionEmail: string | null;
+  sessionUserId: string | null;
   permissions: ReturnType<typeof permissions>;
   accounts: Account[];
   entries: Entry[];
@@ -53,6 +55,7 @@ type Store = {
   loading: boolean;
   error: string;
   checked?: string;
+  refreshSession: () => Promise<void>;
   refresh: () => Promise<void>;
   create: (
     data: Pick<Account, "name" | "type" | "openingBalance">,
@@ -62,10 +65,7 @@ type Store = {
     deposit: boolean,
   ) => Promise<Transfer | TransferRequest>;
 };
-type SessionUser = {
-  email: string;
-  role: "AUDITOR" | "OPERATOR" | "TREASURY_ADMIN";
-};
+type SessionUser = User;
 const Context = createContext<Store | null>(null);
 export function useWorkspace() {
   const value = useContext(Context);
@@ -118,7 +118,18 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const [pendingLiveMode, setPendingLiveMode] = useState(false);
   const [session, setSession] = useState<SessionUser | null>(null);
   const generation = useRef(0);
+  const sessionGeneration = useRef(0);
   const allowed = permissions(mode, session?.role ?? null);
+  const navigation: [string, string][] = [
+    ["accounts", "Accounts"],
+    ["transfers", "Transfers"],
+    ["approvals", "Approvals"],
+    ["treasury", "Treasury"],
+    ["ledger", "Ledger"],
+    ["audit", "Audit trail"],
+    ["system-status", "System status"],
+  ];
+  if (session?.role === "TREASURY_ADMIN") navigation.splice(6, 0, ["users", "Users"]);
   useEffect(() => {
     function expired() {
       setSession(null);
@@ -128,23 +139,47 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     window.addEventListener("ledgerflow-session-expired", expired);
     return () => window.removeEventListener("ledgerflow-session-expired", expired);
   }, [router]);
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/auth/session", { cache: "no-store" })
-      .then(async (response) => {
-        if (response.status === 401) window.dispatchEvent(new Event("ledgerflow-session-expired"));
-        return response.ok ? ((await response.json()) as SessionUser) : null;
-      })
-      .then((user) => {
-        if (active) setSession(user);
-      })
-      .catch(() => {
-        if (active) setSession(null);
-      });
-    return () => {
-      active = false;
-    };
+  const refreshSession = useCallback(async () => {
+    const requestNumber = ++sessionGeneration.current;
+    try {
+      const response = await fetch("/api/auth/session", { cache: "no-store" });
+      if (requestNumber !== sessionGeneration.current) return;
+      if (response.status === 401) {
+        window.dispatchEvent(new Event("ledgerflow-session-expired"));
+        return;
+      }
+      if (!response.ok) {
+        setSession(null);
+        return;
+      }
+      const user = (await response.json()) as SessionUser;
+      if (requestNumber !== sessionGeneration.current) return;
+      if (!user?.id || !user.email || !user.role) {
+        setSession(null);
+        return;
+      }
+      setSession(user);
+    } catch {
+      // The backend's persisted role is authoritative. Drop cached privileges if it cannot be checked.
+      if (requestNumber === sessionGeneration.current) setSession(null);
+    }
   }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refreshSession(), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname, refreshSession]);
+  useEffect(() => {
+    const onFocus = () => void refreshSession();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshSession();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshSession]);
   const refresh = useCallback(async () => {
     if (mode === "demo") {
       setChecked(new Date().toISOString());
@@ -292,6 +327,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
         mode,
         role: session?.role ?? null,
         sessionEmail: session?.email ?? null,
+        sessionUserId: session?.id ?? null,
         permissions: allowed,
         accounts,
         entries,
@@ -299,6 +335,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
         loading,
         error,
         checked,
+        refreshSession,
         refresh,
         create,
         transfer,
@@ -315,15 +352,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
           <small>OPERATIONS</small>
         </div>
         <nav aria-label="Main navigation">
-          {[
-            ["accounts", "Accounts"],
-            ["transfers", "Transfers"],
-            ["approvals", "Approvals"],
-            ["treasury", "Treasury"],
-            ["ledger", "Ledger"],
-            ["audit", "Audit trail"],
-            ["system-status", "System status"],
-          ].map(([path, label]) => (
+          {navigation.map(([path, label]) => (
             <Link
               onClick={() => setMobile(false)}
               key={path}

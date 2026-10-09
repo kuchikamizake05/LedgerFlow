@@ -45,7 +45,7 @@ def setup_role(browser, role):
             return route.fulfill(json={"id": REVERSAL_ID, "sourceAccountId": ACCOUNT_ID, "targetAccountId": ACCOUNT_ID, "amount": "1.00", "status": "COMPLETED", "idempotencyKey": "reversal-reference", "description": "Reversal", "createdAt": "2026-10-06T00:00:00Z", "reversalOf": TRANSFER_ID})
         return route.fulfill(status=404, json={"message": f"Unexpected mock request: {path}"})
 
-    page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "mock@example.test", "role": role}))
+    page.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000001", "email": "mock@example.test", "role": role}))
     page.route("**/api/backend/**", backend)
     return context, page, state
 

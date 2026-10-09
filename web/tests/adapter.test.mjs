@@ -42,6 +42,10 @@ test("session preserves cookie on backend failure and clears expired authenticat
   try {
     globalThis.fetch = async () => Response.json({ message: "Unavailable" }, { status: 503 });
     assert.equal((await route.GET()).headers.get("set-cookie"), null);
+    globalThis.fetch = async () => Response.json({ id: "user-1", email: "updated@example.test", role: "AUDITOR" });
+    const refreshed = await route.GET();
+    assert.equal(refreshed.status, 200);
+    assert.deepEqual(await refreshed.json(), { id: "user-1", email: "updated@example.test", role: "AUDITOR" }, "session must use the persisted backend user response");
     globalThis.fetch = async () => Response.json({ message: "Expired" }, { status: 401 });
     assert.match((await route.GET()).headers.get("set-cookie"), /ledgerflow_access_token=;/);
   } finally { globalThis.fetch = original; delete globalThis.testCookies; }
@@ -135,7 +139,7 @@ test("user administration adapter forwards the page query and role change reason
   assert.equal(new URL(calls[0].url).search, query);
 
   const body = JSON.stringify({ role: "OPERATOR", reason: "Role adjusted after review" });
-  const change = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "http://localhost" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
+  const change = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "http://localhost", cookie: "ledgerflow_access_token=mock-token" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
   assert.equal(change.status, 200, "user role change route must be forwarded");
   assert.equal(new URL(calls[1].url).pathname, `/api/users/${id}/role`);
   assert.equal(calls[1].options.body, body);

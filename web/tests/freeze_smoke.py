@@ -24,7 +24,7 @@ with sync_playwright() as p:
                 account["frozen"] = state["frozen"]
                 return route.fulfill(json=account)
             return route.fulfill(status=404, json={"message": "Unexpected mock request"})
-        page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "mock@example.test", "role": role}))
+        page.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000001", "email": "mock@example.test", "role": role}))
         page.route("**/api/backend/**", backend)
         page.goto(BASE + "/accounts")
         page.get_by_role("combobox", name="Data source").click()

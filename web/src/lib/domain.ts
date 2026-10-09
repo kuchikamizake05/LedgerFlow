@@ -61,6 +61,8 @@ export type AuditEvent = {
   description: string;
   createdAt: string;
 };
+export type UserRole = "AUDITOR" | "OPERATOR" | "TREASURY_ADMIN";
+export type User = { id: string; email: string; role: UserRole };
 export const TREASURY = "00000000-0000-0000-0000-000000000001";
 export function cents(value: string): bigint {
   if (!/^\d+(\.\d{1,2})?$/.test(value))

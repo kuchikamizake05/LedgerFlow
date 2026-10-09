@@ -10,7 +10,7 @@ with sync_playwright() as p:
     page.set_default_timeout(15000)
     # Isolated browser session; no real credentials or database writes.
     page.context.add_cookies([{"name": "ledgerflow_access_token", "value": "smoke-only", "url": BASE}])
-    page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "smoke@example.test", "role": "AUDITOR"}))
+    page.route("**/api/auth/session", lambda route: route.fulfill(json={"id": "50000000-0000-4000-8000-000000000001", "email": "smoke@example.test", "role": "AUDITOR"}))
     output = Path(__file__).parent / "artifacts"
     output.mkdir(exist_ok=True)
     errors = []

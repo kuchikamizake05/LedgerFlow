@@ -1311,10 +1311,60 @@ fieldset:disabled {
   justify-content: flex-end;
   flex-wrap: wrap;
 }
+.users-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 20px;
+  align-items: start;
+}
+.users-list,
+.users-detail { min-width: 0; }
+.users-list tbody tr[aria-selected="true"] { background: #252c32; }
+.users-list .toolbar { justify-content: space-between; }
+.user-self { display: block; margin-top: 3px; }
+.users-detail { padding: 20px; }
+.users-detail > .section-heading {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.users-detail .detail-list {
+  grid-template-columns: 90px minmax(0, 1fr);
+  font-size: 12px;
+}
+.users-detail .decision-form {
+  display: flex;
+  flex-direction: column;
+}
+.users-detail .decision-form select {
+  width: 100%;
+  min-height: 36px;
+  margin: 0 0 16px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #151719;
+  color: var(--text);
+}
+.users-detail .decision-form textarea {
+  min-height: 92px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #151719;
+  color: var(--text);
+  resize: vertical;
+}
+.users-detail .decision-form > button { align-self: flex-end; }
+.user-confirm-reason {
+  grid-template-columns: 65px minmax(0, 1fr);
+  margin: 0;
+  font-size: 12px;
+}
 @media (max-width: 1050px) {
   .approval-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  .users-layout { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   * {
