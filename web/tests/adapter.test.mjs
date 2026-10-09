@@ -85,3 +85,35 @@ test("reversal forwards unchanged request and rejects cross-origin writes", asyn
  assert.equal(denied.status,403);
  }finally{globalThis.fetch=original;}
 });
+
+test("transfer approval adapter supports filtered queue, detail, and guarded decisions", async () => {
+ const route = await loadRoute("../src/app/api/backend/[...path]/route.ts");
+ const original = globalThis.fetch;
+ const id = "40000000-0000-4000-8000-000000000001";
+ const query = "?page=2&size=10&status=PENDING";
+ const forwarded = [];
+ globalThis.fetch = async (url, options) => {
+  forwarded.push({ url: String(url), options });
+  return Response.json({ id, status: "PENDING" });
+ };
+ try {
+  const list = await route.GET(new NextRequest(`http://localhost/api/backend/transfer-requests${query}`), { params: Promise.resolve({ path: ["transfer-requests"] }) });
+  assert.equal(list.status, 200, "approval queue route must be forwarded");
+  assert.equal(new URL(forwarded[0].url).pathname, "/api/transfer-requests");
+  assert.equal(new URL(forwarded[0].url).search, query);
+
+  const detail = await route.GET(new NextRequest(`http://localhost/api/backend/transfer-requests/${id}`), { params: Promise.resolve({ path: ["transfer-requests", id] }) });
+  assert.equal(detail.status, 200, "approval detail route must be forwarded");
+  assert.equal(new URL(forwarded[1].url).pathname, `/api/transfer-requests/${id}`);
+
+  const body = JSON.stringify({ reason: "Reviewed against invoice 884" });
+  const decision = await route.POST(new NextRequest(`http://localhost/api/backend/transfer-requests/${id}/approve`, { method: "POST", headers: { origin: "http://localhost" }, body }), { params: Promise.resolve({ path: ["transfer-requests", id, "approve"] }) });
+  assert.equal(decision.status, 200, "approval decision route must be forwarded");
+  assert.equal(forwarded[2].options.body, body);
+  assert.equal(new URL(forwarded[2].url).pathname, `/api/transfer-requests/${id}/approve`);
+
+  const denied = await route.POST(new NextRequest(`http://localhost/api/backend/transfer-requests/${id}/reject`, { method: "POST", headers: { origin: "https://other.example" }, body }), { params: Promise.resolve({ path: ["transfer-requests", id, "reject"] }) });
+  assert.equal(denied.status, 403, "decision writes must retain same-origin protection");
+  assert.equal(forwarded.length, 3, "cross-origin decision must not reach the backend");
+ } finally { globalThis.fetch = original; }
+});
