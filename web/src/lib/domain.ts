@@ -34,6 +34,23 @@ export type Transfer = {
   createdAt: string;
   reversalOf?: string | null;
 };
+export type TransferRequest = {
+  id: string;
+  sourceAccountId: string;
+  targetAccountId: string;
+  amount: string;
+  idempotencyKey: string;
+  description: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  requesterId: string;
+  requesterEmail: string;
+  createdAt: string;
+  decisionActorId?: string | null;
+  decisionActorEmail?: string | null;
+  decisionReason?: string | null;
+  decidedAt?: string | null;
+  completedTransferId?: string | null;
+};
 export type AuditEvent = {
   id: string;
   actorId: string | null;

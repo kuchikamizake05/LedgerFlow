@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   Transfer,
+  TransferRequest,
   TREASURY,
   cents,
   money,
@@ -47,7 +48,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
   const [error, setError] = useState("");
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<Transfer>();
+  const [receipt, setReceipt] = useState<Transfer | TransferRequest>();
   const [lab, setLab] = useState(false);
   const [unknown, setUnknown] = useState(false);
   type Pending = { email: string; sourceAccountId: string; targetAccountId: string; amount: string; description: string; idempotencyKey: string; deposit: boolean };
@@ -111,9 +112,10 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
       setReceipt(result);
       setReview(false);
       setUnknown(false);
+      const request = "requesterEmail" in result ? result : undefined;
       notify({
         type: "success",
-        title: deposit ? "Allocation completed" : "Transfer completed",
+        title: deposit ? "Allocation completed" : request ? request.status === "PENDING" ? "Approval requested" : `Request ${request.status.toLowerCase()}` : "Transfer completed",
         description: `${money(result.amount)} · ${shortId(result.id)}`,
       });
     } catch (e) {
@@ -147,12 +149,12 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
         description={
           deposit
             ? "Allocate treasury funds to an account."
-            : "Move funds between accounts. Every movement has a trace."
+            : "Submit ordinary transfers for approval before funds move."
         }
       />
       {pending && <Notice>
         Saved request reference <span className="mono">{pending.idempotencyKey}</span><Copy value={pending.idempotencyKey} />.
-        Verify this request in the ledger before retrying. {store.mode === "demo" ? "Switch to Local API to restore the original request." : pending.deposit !== deposit ? <Link href={pending.deposit ? "/treasury" : "/transfers"}>Open saved request</Link> : <button disabled={!permitted} onClick={() => {
+        Verify this request before retrying. {store.mode === "demo" ? "Switch to Local API to restore the original request." : pending.deposit !== deposit ? <Link href={pending.deposit ? "/treasury" : "/transfers"}>Open saved request</Link> : <button disabled={!permitted} onClick={() => {
           setSource(pending.sourceAccountId); setTarget(pending.targetAccountId); setAmount(pending.amount);
           setNote(pending.description); setKey(pending.idempotencyKey); setUnknown(true); setPending(undefined);
         }}>Restore original request</button>}
@@ -170,7 +172,43 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
           </button>
         </div>
       )}
-      {receipt ? (
+      {receipt && "requesterEmail" in receipt ? (
+        <section className="completion panel">
+          <span className={`status ${receipt.status === "APPROVED" ? "good" : ""}`}>
+            {receipt.status === "PENDING" ? "PENDING APPROVAL" : receipt.status}
+          </span>
+          <h2>{receipt.status === "PENDING" ? "Approval requested" : receipt.status === "APPROVED" ? "Request approved" : "Request rejected"}</h2>
+          <strong className="money-large">{money(receipt.amount)}</strong>
+          <p className="muted">
+            {receipt.status === "PENDING"
+              ? "This request is waiting for review. No account balance or journal entry has changed."
+              : receipt.status === "APPROVED"
+                ? "An administrator approved this request. The completed transfer is linked below."
+                : "This request was rejected. No funds moved."}
+          </p>
+          <dl className="detail-list completion-details">
+            <dt>From</dt>
+            <dd>{store.accounts.find((a) => a.id === receipt.sourceAccountId)?.name || shortId(receipt.sourceAccountId)}</dd>
+            <dt>To</dt>
+            <dd>{store.accounts.find((a) => a.id === receipt.targetAccountId)?.name || shortId(receipt.targetAccountId)}</dd>
+            <dt>Request ID</dt>
+            <dd className="mono">{receipt.id}<Copy value={receipt.id} /></dd>
+            <dt>Reference</dt>
+            <dd className="mono">{receipt.idempotencyKey}<Copy value={receipt.idempotencyKey} /></dd>
+            <dt>Requested by</dt>
+            <dd>{receipt.requesterEmail}</dd>
+            <dt>Submitted</dt>
+            <dd>{stamp(receipt.createdAt)}</dd>
+            {receipt.decisionReason && <><dt>Decision note</dt><dd>{receipt.decisionReason}</dd></>}
+          </dl>
+          <div className="inline">
+            <Link className="button" href={receipt.completedTransferId ? `/ledger?account=${receipt.sourceAccountId}&transaction=${receipt.completedTransferId}` : "/approvals"}>
+              {receipt.completedTransferId ? "View completed transfer" : "View approvals"}
+            </Link>
+            <button onClick={reset}>New request</button>
+          </div>
+        </section>
+      ) : receipt ? (
         <section className="completion panel">
           <span className="status good">
             {store.mode === "demo" ? "SIMULATION COMPLETED" : receipt.status}
@@ -424,7 +462,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                   <span className="muted">
                     {store.mode === "demo"
                       ? "Simulated movement only"
-                      : "Development database write"}
+                      : deposit ? "Development database write" : "Submits for approval · no funds move yet"}
                   </span>
                   <button
                     className="primary"
@@ -455,7 +493,7 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
                       <span>{a ? money(a.currentBalance) : "—"}</span>
                     </div>
                     <div className="balance-row after">
-                      <span>After</span>
+                      <span>{store.mode === "live" && !deposit ? "After approval" : "After"}</span>
                       <strong>
                         {a && amount
                           ? money(cents(a.currentBalance) + (delta as bigint))
@@ -575,7 +613,9 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
           <p className="muted">
             {store.mode === "demo"
               ? "This updates synthetic session data only."
-              : "Confirm this write to your local development database."}
+              : deposit
+                ? "Confirm this treasury allocation to your local development database."
+                : "This submits an approval request to your local API. Account balances and journal entries stay unchanged until an administrator approves it."}
           </p>
           <dl className="detail-list">
             <dt>From</dt>
@@ -604,7 +644,11 @@ export function PaymentPage({ deposit = false }: { deposit?: boolean }) {
             >
               {busy
                 ? "Submitting…"
-                : "Confirm " + (deposit ? "allocation" : "transfer")}
+                : deposit
+                  ? "Confirm allocation"
+                  : store.mode === "live"
+                    ? "Submit for approval"
+                    : "Confirm transfer"}
             </button>
           </div>
         </Modal>

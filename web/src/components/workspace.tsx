@@ -13,6 +13,7 @@ import {
   Account,
   Entry,
   Transfer,
+  TransferRequest,
   api,
   permissions,
   Role,
@@ -59,7 +60,7 @@ type Store = {
   transfer: (
     data: Omit<Transfer, "id" | "status" | "createdAt">,
     deposit: boolean,
-  ) => Promise<Transfer>;
+  ) => Promise<Transfer | TransferRequest>;
 };
 type SessionUser = {
   email: string;
@@ -218,8 +219,8 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     if (mode === "live") {
       setLoading(true);
       try {
-        const result = await api<Transfer>(
-          deposit ? `accounts/${data.targetAccountId}/deposits` : "transfers",
+        const result = await api<Transfer | TransferRequest>(
+          deposit ? `accounts/${data.targetAccountId}/deposits` : "transfer-requests",
           deposit
             ? {
                 amount: data.amount,
@@ -317,6 +318,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
           {[
             ["accounts", "Accounts"],
             ["transfers", "Transfers"],
+            ["approvals", "Approvals"],
             ["treasury", "Treasury"],
             ["ledger", "Ledger"],
             ["audit", "Audit trail"],
@@ -422,8 +424,9 @@ export function Workspace({ children }: { children: React.ReactNode }) {
             <AlertDialogHeader>
               <AlertDialogTitle>Connect to Local API?</AlertDialogTitle>
               <AlertDialogDescription>
-                Transfers, allocations, and account creation will write to your
-                local development database. Your signed-in role determines which operations are permitted.
+                Ordinary transfers create approval requests; funds move only after
+                an eligible administrator approves. Allocations and account
+                creation write to your local development database.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

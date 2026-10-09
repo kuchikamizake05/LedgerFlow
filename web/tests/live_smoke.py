@@ -5,6 +5,7 @@ from playwright.sync_api import sync_playwright, expect
 
 BASE = os.environ.get("BASE_URL", "http://127.0.0.1:3100")
 ACCOUNT = {"id": "10000000-0000-4000-8000-000000000001", "name": "Test account", "type": "BANK", "openingBalance": "100.00", "currentBalance": "99.99", "createdAt": "2026-10-01T00:00:00Z"}
+DESTINATION = {"id": "10000000-0000-4000-8000-000000000002", "name": "Destination account", "type": "BANK", "openingBalance": "100.00", "currentBalance": "100.00", "createdAt": "2026-10-01T00:00:00Z"}
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -54,7 +55,13 @@ with sync_playwright() as p:
     context.add_cookies([{"name": "ledgerflow_access_token", "value": "mock-only", "url": BASE}])
     page = context.new_page()
     page.route("**/api/auth/session", lambda route: route.fulfill(json={"email": "mock@example.test", "role": "OPERATOR"}))
-    page.route("**/api/backend/accounts", lambda route: route.fulfill(json=[ACCOUNT]))
+    page.route("**/api/backend/accounts", lambda route: route.fulfill(json=[ACCOUNT, DESTINATION]))
+    submissions = []
+    def submit_request(route):
+        payload = route.request.post_data_json
+        submissions.append(payload)
+        route.fulfill(status=201, json={**payload, "id": "40000000-0000-4000-8000-000000000001", "status": "PENDING", "requesterId": "operator-user", "requesterEmail": "mock@example.test", "createdAt": "2026-10-09T03:00:00Z"})
+    page.route("**/api/backend/transfer-requests", submit_request)
     saved = {"email": "mock@example.test", "sourceAccountId": ACCOUNT["id"], "targetAccountId": "10000000-0000-4000-8000-000000000002", "amount": "1.00", "description": "Uncertain payment", "idempotencyKey": "recover-original", "deposit": False}
     page.add_init_script("sessionStorage.setItem('ledgerflow-pending-request', " + json.dumps(json.dumps(saved)) + ")")
     page.goto(BASE + "/transfers")
@@ -68,6 +75,10 @@ with sync_playwright() as p:
     expect(page.get_by_label("Amount in IDR")).to_have_value("1.00")
     expect(page.get_by_label("Amount in IDR")).to_be_disabled()
     expect(page.get_by_role("button", name="Retry unchanged request")).to_be_visible()
+    page.get_by_role("button", name="Retry unchanged request").click()
+    expect(page.get_by_role("heading", name="Approval requested", exact=True)).to_be_visible()
+    expect(page.get_by_text("No account balance or journal entry has changed.")).to_be_visible()
+    assert submissions == [{"sourceAccountId": ACCOUNT["id"], "targetAccountId": DESTINATION["id"], "amount": "1.00", "description": "Uncertain payment", "idempotencyKey": "recover-original"}]
     context.close()
     browser.close()
     print("PASS: live role controls, explicit reconciliation, signed differences, failed check, expired session")
