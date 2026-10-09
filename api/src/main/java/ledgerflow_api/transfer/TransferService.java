@@ -29,15 +29,21 @@ public class TransferService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final AccountRepository accountRepository;
     private final AuditService auditService;
+    private final TransferRequestRepository transferRequestRepository;
+    private final IdempotencyLockService idempotencyLockService;
 
     public TransferService(TransferRepository transferRepository,
             LedgerEntryRepository ledgerEntryRepository,
             AccountRepository accountRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            TransferRequestRepository transferRequestRepository,
+            IdempotencyLockService idempotencyLockService) {
         this.transferRepository = transferRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.accountRepository = accountRepository;
         this.auditService = auditService;
+        this.transferRequestRepository = transferRequestRepository;
+        this.idempotencyLockService = idempotencyLockService;
     }
     public static final UUID SYSTEM_TREASURY_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
@@ -48,7 +54,7 @@ public class TransferService {
 
     @Transactional
     public TransferExecutionResult executeDeposit(UUID targetAccountId, DepositRequest request) {
-        return executeInternalTransfer(depositTransferRequest(targetAccountId, request));
+        return executeInternalTransfer(depositTransferRequest(targetAccountId, request), null);
     }
 
     private CreateTransferRequest depositTransferRequest(UUID targetAccountId, DepositRequest request) {
@@ -68,15 +74,33 @@ public class TransferService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Treasury allocations must use the deposit endpoint");
         }
-        return executeInternalTransfer(request);
+        return executeInternalTransfer(request, null);
     }
 
-    private TransferExecutionResult executeInternalTransfer(CreateTransferRequest request) {
+    @Transactional
+    public TransferExecutionResult executeApprovedTransfer(CreateTransferRequest request, UUID approvalRequestId) {
+        if (SYSTEM_TREASURY_ID.equals(request.sourceAccountId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Treasury allocations must use the deposit endpoint");
+        }
+        return executeInternalTransfer(request, approvalRequestId);
+    }
+
+    private TransferExecutionResult executeInternalTransfer(CreateTransferRequest request, UUID approvalRequestId) {
+        idempotencyLockService.acquire(request.idempotencyKey());
+
         // 1. Idempotency check: key yang sama hanya boleh dipakai untuk payload yang sama.
         Optional<Transfer> existing = transferRepository.findByIdempotencyKey(request.idempotencyKey());
         if (existing.isPresent()) {
             validateMatchingIdempotencyPayload(existing.get(), request);
             return new TransferExecutionResult(TransferResponse.from(existing.get()), true);
+        }
+
+        Optional<TransferRequest> requestCollision = transferRequestRepository
+                .findByIdempotencyKey(request.idempotencyKey());
+        if (requestCollision.isPresent() && !requestCollision.get().getId().equals(approvalRequestId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Idempotency key was already used for a transfer request");
         }
 
         // 2. Cegah transfer ke akun sendiri

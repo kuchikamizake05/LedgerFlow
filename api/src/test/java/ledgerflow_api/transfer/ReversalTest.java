@@ -86,7 +86,7 @@ class ReversalTest {
         long transferCountBefore = transfers.count();
         String token = jwt.issue(new AppUser(UUID.randomUUID()+"@test.local", "unused", AppRole.OPERATOR)).value();
 
-        mvc.perform(post("/api/transfers").header("Authorization", "Bearer "+token)
+        mvc.perform(post("/api/transfer-requests").header("Authorization", "Bearer "+token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"sourceAccountId\":\""+original.targetAccountId()+"\","
                         +"\"targetAccountId\":\""+original.sourceAccountId()+"\","

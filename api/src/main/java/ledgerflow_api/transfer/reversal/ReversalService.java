@@ -17,8 +17,10 @@ import ledgerflow_api.transfer.LedgerDirection;
 import ledgerflow_api.transfer.LedgerEntry;
 import ledgerflow_api.transfer.LedgerEntryRepository;
 import ledgerflow_api.transfer.Transfer;
+import ledgerflow_api.transfer.TransferRequestRepository;
 import ledgerflow_api.transfer.TransferRepository;
 import ledgerflow_api.transfer.TransferResponse;
+import ledgerflow_api.transfer.IdempotencyLockService;
 import ledgerflow_api.transfer.TransferStatus;
 
 @Service
@@ -29,17 +31,26 @@ public class ReversalService {
     private final AccountRepository accountRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final AuditService auditService;
+    private final TransferRequestRepository transferRequestRepository;
+    private final IdempotencyLockService idempotencyLockService;
 
     public ReversalService(TransferRepository transferRepository, AccountRepository accountRepository,
-            LedgerEntryRepository ledgerEntryRepository, AuditService auditService) {
+            LedgerEntryRepository ledgerEntryRepository, AuditService auditService,
+            TransferRequestRepository transferRequestRepository, IdempotencyLockService idempotencyLockService) {
         this.transferRepository = transferRepository;
         this.accountRepository = accountRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.auditService = auditService;
+        this.transferRequestRepository = transferRequestRepository;
+        this.idempotencyLockService = idempotencyLockService;
     }
 
     @Transactional
     public ReversalExecutionResult reverse(UUID originalId, ReverseTransferRequest request) {
+        idempotencyLockService.acquire(request.idempotencyKey());
+        if (transferRequestRepository.findByIdempotencyKey(request.idempotencyKey()).isPresent()) {
+            throw conflict("Idempotency key was already used for a transfer request");
+        }
         Transfer original = transferRepository.findByIdWithLock(originalId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transfer not found"));
 

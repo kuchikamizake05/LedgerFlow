@@ -28,6 +28,7 @@ import ledgerflow_api.account.Account;
 import ledgerflow_api.account.AccountRepository;
 import ledgerflow_api.account.AccountType;
 import ledgerflow_api.TestcontainersConfiguration;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
 @AutoConfigureMockMvc(addFilters = false)
@@ -48,6 +49,9 @@ class TransferControllerTest {
     private LedgerEntryRepository ledgerEntryRepository;
 
     @Autowired
+    private TransferService transferService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Test
@@ -55,7 +59,7 @@ class TransferControllerTest {
         String indexDefinition = jdbcTemplate.queryForObject("""
                 SELECT indexdef
                 FROM pg_indexes
-                WHERE schemaname = 'public'
+                WHERE schemaname = current_schema()
                   AND indexname = 'idx_ledger_entries_account_created_at'
                 """, String.class);
 
@@ -67,7 +71,7 @@ class TransferControllerTest {
         Integer tableCount = jdbcTemplate.queryForObject("""
                 SELECT count(*)
                 FROM information_schema.tables
-                WHERE table_schema = 'public' AND table_name = 'app_users'
+                WHERE table_schema = current_schema() AND table_name = 'app_users'
                 """, Integer.class);
 
         assertThat(tableCount).isEqualTo(1);
@@ -91,13 +95,11 @@ new BigDecimal("0.00")));
                 }
                 """.formatted(source.getId(), target.getId(), idempotencyKey);
 
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").exists())
-                .andExpect(jsonPath("$.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.amount").value(30000.00));
+        TransferExecutionResult execution = transferService.executeTransfer(new CreateTransferRequest(
+                source.getId(), target.getId(), new BigDecimal("30000.00"), idempotencyKey, "Payment for lunch"));
+        assertThat(execution.replayed()).isFalse();
+        assertThat(execution.transfer().status()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(execution.transfer().amount()).isEqualByComparingTo("30000.00");
 
         // Verifikasi saldo kedua akun
         Account updatedSource = accountRepository.findById(source.getId()).orElseThrow();
@@ -136,10 +138,8 @@ LedgerDirection.CREDIT).findFirst().orElseThrow();
                 }
                 """.formatted(source.getId(), target.getId(), idempotencyKey);
 
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(status().isCreated());
+        transferService.executeTransfer(new CreateTransferRequest(source.getId(), target.getId(),
+                new BigDecimal("30000.00"), idempotencyKey, "Journal detail test"));
 
         Transfer transfer = transferRepository.findByIdempotencyKey(idempotencyKey).orElseThrow();
         mockMvc.perform(get("/api/transfers/" + transfer.getId() + "/entries"))
@@ -176,17 +176,11 @@ new BigDecimal("0.00")));
                 }
                 """.formatted(source.getId(), target.getId(), idempotencyKey);
 
-        // Request 1
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(status().isCreated());
-
-        // Request 2 dengan idempotency key yang sama
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(status().isOk());
+        // The internal movement primitive retains its completed-transfer replay behavior.
+        CreateTransferRequest request = new CreateTransferRequest(source.getId(), target.getId(),
+                new BigDecimal("25000.00"), idempotencyKey, "First attempt");
+        assertThat(transferService.executeTransfer(request).replayed()).isFalse();
+        assertThat(transferService.executeTransfer(request).replayed()).isTrue();
 
         // Saldo hanya terpotong satu kali (25.000, bukan 50.000)
         Account updatedSource = accountRepository.findById(source.getId()).orElseThrow();
@@ -218,16 +212,14 @@ new BigDecimal("0.00")));
                 }
                 """.formatted(source.getId(), target.getId(), idempotencyKey);
 
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(firstPayload))
-                .andExpect(status().isCreated());
-
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(changedPayload))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409));
+        transferService.executeTransfer(new CreateTransferRequest(source.getId(), target.getId(),
+                new BigDecimal("25000.00"), idempotencyKey, "First attempt"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> transferService.executeTransfer(
+                new CreateTransferRequest(source.getId(), target.getId(), new BigDecimal("50000.00"),
+                        idempotencyKey, "Different amount")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode().value())
+                .isEqualTo(409);
 
         Account updatedSource = accountRepository.findById(source.getId()).orElseThrow();
         assertThat(updatedSource.getCurrentBalance()).isEqualByComparingTo("75000.00");
@@ -251,12 +243,15 @@ new BigDecimal("0.00")));
                 }
                 """.formatted(source.getId(), target.getId(), idempotencyKey);
 
-        mockMvc.perform(post("/api/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.message").value("Insufficient balance"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> transferService.executeTransfer(
+                new CreateTransferRequest(source.getId(), target.getId(), new BigDecimal("50000.00"),
+                        idempotencyKey, "Overspend attempt")))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(exception -> {
+                    ResponseStatusException responseStatus = (ResponseStatusException) exception;
+                    assertThat(responseStatus.getStatusCode().value()).isEqualTo(400);
+                    assertThat(responseStatus.getReason()).isEqualTo("Insufficient balance");
+                });
 
         // Pastikan saldo tidak berubah
         Account unchangedSource = accountRepository.findById(source.getId()).orElseThrow();
@@ -300,16 +295,6 @@ new BigDecimal("0.00")));
                 new BigDecimal("0.00")));
 
         String idempotencyKey = "concurrent-same-key-" + java.util.UUID.randomUUID();
-        String payload = """
-                {
-                    "sourceAccountId": "%s",
-                    "targetAccountId": "%s",
-                    "amount": 25000.00,
-                    "idempotencyKey": "%s",
-                    "description": "A retried request"
-                }
-                """.formatted(source.getId(), target.getId(), idempotencyKey);
-
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch readyLatch = new CountDownLatch(2);
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -321,22 +306,14 @@ new BigDecimal("0.00")));
             readyLatch.countDown();
             try {
                 startLatch.await();
-                int responseStatus = mockMvc.perform(post("/api/transfers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(payload))
-                        .andReturn()
-                        .getResponse()
-                        .getStatus();
-
-                if (responseStatus == 201) {
-                    createdCount.incrementAndGet();
-                } else if (responseStatus == 200) {
-                    replayCount.incrementAndGet();
-                } else {
-                    unexpectedCount.incrementAndGet();
-                }
-            } catch (Exception exception) {
+                boolean replayed = transferService.executeTransfer(new CreateTransferRequest(
+                        source.getId(), target.getId(), new BigDecimal("25000.00"), idempotencyKey,
+                        "A retried request")).replayed();
+                if (replayed) replayCount.incrementAndGet();
+                else createdCount.incrementAndGet();
+            } catch (RuntimeException | InterruptedException exception) {
                 unexpectedCount.incrementAndGet();
+                if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
             }
         };
 
@@ -381,23 +358,12 @@ new BigDecimal("0.00")));
             readyLatch.countDown();
             try {
                 startLatch.await();
-                String payload = String.format("""
-                        {
-                            "sourceAccountId": "%s",
-                            "targetAccountId": "%s",
-                            "amount": 80000.00,
-                            "idempotencyKey": "%s",
-                            "description": "Concurrent 1"
-                        }
-                        """, source.getId(), target.getId(), key1);
-                int status = mockMvc.perform(post("/api/transfers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(payload))
-                        .andReturn().getResponse().getStatus();
-                if (status == 201) successCount.incrementAndGet();
-                else if (status == 400) failCount.incrementAndGet();
-            } catch (Exception e) {
+                transferService.executeTransfer(new CreateTransferRequest(source.getId(), target.getId(),
+                        new BigDecimal("80000.00"), key1, "Concurrent 1"));
+                successCount.incrementAndGet();
+            } catch (RuntimeException | InterruptedException e) {
                 failCount.incrementAndGet();
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             }
         };
 
@@ -405,23 +371,12 @@ new BigDecimal("0.00")));
             readyLatch.countDown();
             try {
                 startLatch.await();
-                String payload = String.format("""
-                        {
-                            "sourceAccountId": "%s",
-                            "targetAccountId": "%s",
-                            "amount": 80000.00,
-                            "idempotencyKey": "%s",
-                            "description": "Concurrent 2"
-                        }
-                        """, source.getId(), target.getId(), key2);
-                int status = mockMvc.perform(post("/api/transfers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(payload))
-                        .andReturn().getResponse().getStatus();
-                if (status == 201) successCount.incrementAndGet();
-                else if (status == 400) failCount.incrementAndGet();
-            } catch (Exception e) {
+                transferService.executeTransfer(new CreateTransferRequest(source.getId(), target.getId(),
+                        new BigDecimal("80000.00"), key2, "Concurrent 2"));
+                successCount.incrementAndGet();
+            } catch (RuntimeException | InterruptedException e) {
                 failCount.incrementAndGet();
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             }
         };
 

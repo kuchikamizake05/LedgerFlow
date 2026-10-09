@@ -52,13 +52,11 @@ public class AuditService {
         return PageResponse.from(results.map(AuditEventResponse::from));
     }
 
-    private Actor currentActor() {
+    public Actor currentAuthenticatedActor() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()
-                || authentication instanceof AnonymousAuthenticationToken) {
-            return new Actor(null, "system@ledgerflow.internal", "SYSTEM");
-        }
-        if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication)) {
+                || authentication instanceof AnonymousAuthenticationToken
+                || !(authentication instanceof JwtAuthenticationToken jwtAuthentication)) {
             throw new IllegalStateException("Authenticated audit actor must be a JWT");
         }
         Jwt jwt = jwtAuthentication.getToken();
@@ -75,5 +73,14 @@ public class AuditService {
         }
     }
 
-    private record Actor(UUID id, String email, String role) {}
+    private Actor currentActor() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) {
+            return new Actor(null, "system@ledgerflow.internal", "SYSTEM");
+        }
+        return currentAuthenticatedActor();
+    }
+
+    public record Actor(UUID id, String email, String role) {}
 }

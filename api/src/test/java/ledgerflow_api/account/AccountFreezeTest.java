@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import tools.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,7 @@ class AccountFreezeTest {
     @Autowired TransferService transferService;
     @Autowired JwtService jwt;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ObjectMapper objectMapper;
 
     @Test
     void freezesAndUnfreezesWithAdminAuditAndIdempotentStateChanges() throws Exception {
@@ -90,8 +92,8 @@ class AccountFreezeTest {
 
         long transfersBefore = transfers.count();
         long entriesBefore = entries.count();
-        assertThat(transfer(sourceToken(operator), frozenSource, target)).isEqualTo(409);
-        assertThat(transfer(sourceToken(operator), source, frozenTarget)).isEqualTo(409);
+        assertThat(transfer(sourceToken(operator), admin, frozenSource, target)).isEqualTo(409);
+        assertThat(transfer(sourceToken(operator), admin, source, frozenTarget)).isEqualTo(409);
         assertThat(deposit(admin, frozenTarget)).isEqualTo(409);
         assertThat(transfers.count()).isEqualTo(transfersBefore);
         assertThat(entries.count()).isEqualTo(entriesBefore);
@@ -111,16 +113,20 @@ class AccountFreezeTest {
         String key = UUID.randomUUID().toString();
         AppUser operator = user(AppRole.OPERATOR);
         String payload = transferPayload(source, target, key);
-        mvc.perform(post("/api/transfers").header("Authorization", bearer(operator))
-                        .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isCreated());
+        String requestId = submitTransfer(operator, payload);
+        mvc.perform(post("/api/transfer-requests/{id}/approve", requestId)
+                        .header("Authorization", bearer(user(AppRole.TREASURY_ADMIN)))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"approved payment\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
 
         freeze(source, user(AppRole.TREASURY_ADMIN), "subsequent hold");
         long transferCount = transfers.count();
         long entryCount = entries.count();
-        mvc.perform(post("/api/transfers").header("Authorization", bearer(operator))
+        mvc.perform(post("/api/transfer-requests").header("Authorization", bearer(operator))
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"))
                 .andExpect(jsonPath("$.idempotencyKey").value(key));
         assertThat(transfers.count()).isEqualTo(transferCount);
         assertThat(entries.count()).isEqualTo(entryCount);
@@ -242,10 +248,23 @@ class AccountFreezeTest {
                 .andExpect(status().isOk());
     }
 
-    private int transfer(String token, Account source, Account target) throws Exception {
-        return mvc.perform(post("/api/transfers").header("Authorization", token)
-                .contentType(MediaType.APPLICATION_JSON).content(transferPayload(source, target, UUID.randomUUID().toString())))
+    private int transfer(String token, AppUser admin, Account source, Account target) throws Exception {
+        String payload = transferPayload(source, target, UUID.randomUUID().toString());
+        String requestId = submitTransfer(token, payload);
+        return mvc.perform(post("/api/transfer-requests/{id}/approve", requestId).header("Authorization", bearer(admin))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"freeze test approval\"}"))
                 .andReturn().getResponse().getStatus();
+    }
+
+    private String submitTransfer(AppUser requester, String payload) throws Exception {
+        return submitTransfer(bearer(requester), payload);
+    }
+
+    private String submitTransfer(String token, String payload) throws Exception {
+        String body = mvc.perform(post("/api/transfer-requests").header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body).path("id").asText();
     }
 
     private String transferPayload(Account source, Account target, String key) {

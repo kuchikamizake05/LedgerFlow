@@ -55,6 +55,11 @@ public class SecurityConfig {
                                 AppRole.AUDITOR.name(), AppRole.OPERATOR.name(), AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/transfers").hasAnyRole(
                                 AppRole.OPERATOR.name(), AppRole.TREASURY_ADMIN.name())
+                        .requestMatchers(HttpMethod.POST, "/api/transfer-requests").hasAnyRole(
+                                AppRole.OPERATOR.name(), AppRole.TREASURY_ADMIN.name())
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/transfer-requests/*/approve", "/api/transfer-requests/*/reject")
+                        .hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/accounts/*/deposits").hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/accounts/*/freeze", "/api/accounts/*/unfreeze")
                         .hasRole(AppRole.TREASURY_ADMIN.name())

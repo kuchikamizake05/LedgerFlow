@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.validation.Valid;
 
@@ -26,6 +27,9 @@ public class TransferController {
 
     @PostMapping
     public ResponseEntity<TransferResponse> createTransfer(@Valid @RequestBody CreateTransferRequest request) {
+        if (!TransferService.SYSTEM_TREASURY_ID.equals(request.sourceAccountId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Approval required");
+        }
         try {
             TransferExecutionResult result = transferService.executeTransfer(request);
             HttpStatus status = result.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
