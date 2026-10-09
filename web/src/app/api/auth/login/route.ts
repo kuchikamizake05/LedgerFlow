@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     });
     const data = await response.json();
     if (!response.ok) return NextResponse.json(data, { status: response.status });
+    if (data.user?.role === "CUSTOMER") return NextResponse.json({ message: "Use the customer wallet sign in." }, { status: 403 });
 
     const result = NextResponse.json({ user: data.user, expiresAt: data.expiresAt });
     result.cookies.set(tokenCookie, data.accessToken, {
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
       path: "/",
       maxAge: 30 * 60,
     });
+    result.cookies.delete("ledgerflow_customer_access_token");
     return result;
   } catch {
     return NextResponse.json(

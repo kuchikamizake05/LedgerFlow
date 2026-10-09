@@ -10,7 +10,27 @@ To create the initial treasury administrator, explicitly set both `LEDGERFLOW_BO
 
 New registrations receive AUDITOR access. Bootstrap creates the initial operational admin; subsequent role changes are available to administrators on `/users`.
 
-## Permissions
+## Customer wallet simulator
+
+The internal console and customer wallet share the same database and double-entry ledger. Open `/wallet/register` to create a CUSTOMER identity with its own zero-balance EWALLET, then use `/wallet/login`. Staff continue using `/auth/login`. Customer sessions can read only their wallet and personal history, and cannot use internal account, approval, audit, reconciliation or user administration APIs. Staff cannot become customers, or promote customers, through role management.
+
+Customer transfers settle immediately; internal manual transfers still require approval. The customer API derives the debit wallet from the signed-in identity and accepts only a customer-owned wallet as the recipient. Recipient lookup exposes only the public wallet ID and display name. Customer transfers and simulator top ups post to the existing ledger and appear in internal statements, audit and reconciliation.
+
+Simulator top ups are disabled by default. For a local/demo environment, set `LEDGERFLOW_SIMULATOR_TOPUPS_ENABLED=true` and restart the API. Each request is limited to 1,000,000 simulated units and draws from the seeded simulated treasury. This does not process an external payment. Frozen accounts and insufficient treasury funds prevent posting.
+
+| Customer endpoint | Purpose |
+| --- | --- |
+| `POST /api/wallet/auth/register` | Register with email/password and create the owned wallet |
+| `POST /api/wallet/auth/login` | Sign in as a customer |
+| `GET /api/wallet/me` | Read the signed-in customer's wallet |
+| `GET /api/wallet/recipient/{id}` | Confirm a public recipient wallet ID and name |
+| `POST /api/wallet/topups` | Simulated top up: amount, idempotencyKey, optional description |
+| `POST /api/wallet/transfers` | Instant transfer: targetAccountId, amount, idempotencyKey, optional description |
+| `GET /api/wallet/history?page=0&size=20` | Paginated personal journal entries |
+
+Preserve the same request key and payload after an uncertain outcome. Customer keys are isolated by identity and operation; exact retries return the existing posting, and altered payloads conflict. Account recovery, report exports, backup/restore tooling and expanded onboarding remain later work.
+
+## Internal permissions
 
 | Operation | AUDITOR | OPERATOR | TREASURY_ADMIN |
 | --- | --- | --- | --- |

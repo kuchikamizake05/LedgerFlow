@@ -73,6 +73,7 @@ export function UsersPage() {
   }, [loadPage, page]);
 
   function selectUser(user: User) {
+    if (user.role === "CUSTOMER") return;
     selectedId.current = user.id;
     setSelected(user);
     setRole(user.role);
@@ -132,7 +133,8 @@ export function UsersPage() {
   }
 
   const isAdmin = store.role === "TREASURY_ADMIN";
-  const canSubmit = !!selected && isAdmin && store.mode === "live" && role !== selected.role && !!reason.trim() && reason.trim().length <= 255 && !saving && !uncertain;
+  const isCustomer = selected?.role === "CUSTOMER";
+  const canSubmit = !!selected && !isCustomer && isAdmin && store.mode === "live" && role !== selected.role && !!reason.trim() && reason.trim().length <= 255 && !saving && !uncertain;
   const isSelf = !!selected && selected.id === store.sessionUserId;
 
   return (
@@ -171,7 +173,7 @@ export function UsersPage() {
                           <td>{user.email}{user.id === store.sessionUserId && <small className="user-self">You</small>}</td>
                           <td><span className="badge">{user.role}</span></td>
                           <td className="mono">{shortId(user.id)}</td>
-                          <td><button className="link plain" disabled={saving} onClick={() => selectUser(user)}>{selected?.id === user.id ? "Selected" : "Review"}</button></td>
+                          <td>{user.role === "CUSTOMER" ? <span className="muted">Customer wallet account</span> : <button className="link plain" disabled={saving} onClick={() => selectUser(user)}>{selected?.id === user.id ? "Selected" : "Review"}</button>}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -196,7 +198,9 @@ export function UsersPage() {
                     <dt>User ID</dt><dd className="mono wrap">{selected.id}</dd>
                     <dt>Current role</dt><dd>{selected.role}</dd>
                   </dl>
-                  <div className="decision-form">
+                  {isCustomer ? (
+                    <Notice>Customer wallet accounts are read-only here. Their wallet role cannot be changed through staff role management.</Notice>
+                  ) : <div className="decision-form">
                     <label htmlFor="user-role">Workspace role</label>
                     <select id="user-role" aria-label="Workspace role" value={role} disabled={saving || uncertain} onChange={(event) => { setRole(event.target.value as UserRole); setUncertain(false); setError(""); }}>
                       {roles.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
@@ -205,7 +209,7 @@ export function UsersPage() {
                     <textarea id="user-role-reason" aria-label="Role change reason" maxLength={255} value={reason} disabled={saving || uncertain} onChange={(event) => setReason(event.target.value)} placeholder="Record why access is changing" />
                     <small>{reason.length}/255 characters · required</small>
                     <button className="primary" disabled={!canSubmit} onClick={() => setConfirming(true)}>{saving ? "Saving…" : "Review role change"}</button>
-                  </div>
+                  </div>}
                 </>
               )}
             </section>

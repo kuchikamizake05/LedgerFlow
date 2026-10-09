@@ -74,6 +74,11 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/wallet/auth/register", "/api/wallet/auth/login").permitAll()
+                        .requestMatchers("/api/wallet/**").hasRole(AppRole.CUSTOMER.name())
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole(
+                                AppRole.AUDITOR.name(), AppRole.OPERATOR.name(), AppRole.TREASURY_ADMIN.name(),
+                                AppRole.CUSTOMER.name())
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users").hasRole(AppRole.TREASURY_ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/users/*/role").hasRole(AppRole.TREASURY_ADMIN.name())

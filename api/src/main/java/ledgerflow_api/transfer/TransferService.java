@@ -74,7 +74,12 @@ public class TransferService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Treasury allocations must use the deposit endpoint");
         }
-        return executeInternalTransfer(request, null);
+        return executeInternalTransfer(request, null, null);
+    }
+
+    @Transactional
+    public TransferExecutionResult executeCustomerTransfer(CreateTransferRequest request, String auditAction) {
+        return executeInternalTransfer(request, null, auditAction);
     }
 
     @Transactional
@@ -83,10 +88,14 @@ public class TransferService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Treasury allocations must use the deposit endpoint");
         }
-        return executeInternalTransfer(request, approvalRequestId);
+        return executeInternalTransfer(request, approvalRequestId, null);
     }
 
     private TransferExecutionResult executeInternalTransfer(CreateTransferRequest request, UUID approvalRequestId) {
+        return executeInternalTransfer(request, approvalRequestId, null);
+    }
+
+    private TransferExecutionResult executeInternalTransfer(CreateTransferRequest request, UUID approvalRequestId, String customerAuditAction) {
         idempotencyLockService.acquire(request.idempotencyKey());
 
         // 1. Idempotency check: key yang sama hanya boleh dipakai untuk payload yang sama.
@@ -174,7 +183,8 @@ public class TransferService {
         ledgerEntryRepository.save(debitEntry);
         ledgerEntryRepository.save(creditEntry);
 
-        String auditAction = SYSTEM_TREASURY_ID.equals(source.getId()) ? "TREASURY_DEPOSIT" : "TRANSFER_COMPLETED";
+        String auditAction = customerAuditAction != null ? customerAuditAction
+                : SYSTEM_TREASURY_ID.equals(source.getId()) ? "TREASURY_DEPOSIT" : "TRANSFER_COMPLETED";
         auditService.record(auditAction, savedTransfer.getId(), "Completed transfer " + savedTransfer.getId());
 
         return new TransferExecutionResult(TransferResponse.from(savedTransfer), false);

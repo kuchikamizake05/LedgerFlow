@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/lib/request-security";
 const uuid = "[a-fA-F0-9-]{36}";
 async function forward(
   request: NextRequest,
@@ -18,7 +19,7 @@ async function forward(
     );
   if (
     request.method === "POST" &&
-    request.headers.get("origin") !== request.nextUrl.origin
+    !isSameOriginRequest(request)
   )
     return NextResponse.json(
       { message: "Cross-origin write rejected." },

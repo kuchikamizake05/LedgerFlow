@@ -7,8 +7,12 @@ import { pathToFileURL } from "node:url";
 
 async function loadRoute(path) {
   const source = await readFile(new URL(path, import.meta.url), "utf8");
+  const securitySource = await readFile(new URL("../src/lib/request-security.ts", import.meta.url), "utf8");
+  const securityModule = ts.transpileModule(securitySource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const securityUrl = `data:text/javascript;base64,${Buffer.from(securityModule).toString("base64")}`;
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replace('"next/server"', JSON.stringify(pathToFileURL(`${process.cwd()}/node_modules/next/server.js`).href))
+    .replace('"@/lib/request-security"', JSON.stringify(securityUrl))
     .replace('import { cookies } from "next/headers";', 'const cookies = globalThis.testCookies;');
   return import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 }
@@ -69,7 +73,7 @@ test("freeze and unfreeze forward reasons and preserve write origin checks", asy
  try {
  for (const action of ["freeze","unfreeze"]) {
  const context={params:Promise.resolve({path:["accounts",id,action]})};
- const response=await route.POST(new NextRequest(`http://localhost/api/backend/accounts/${id}/${action}`,{method:"POST",headers:{origin:"http://localhost"},body}),context);
+ const response=await route.POST(new NextRequest(`http://localhost/api/backend/accounts/${id}/${action}`,{method:"POST",headers:{origin:"http://localhost",host:"localhost"},body}),context);
  assert.equal(response.status,200);assert.equal(forwarded,body);
  const denied=await route.POST(new NextRequest(`http://localhost/api/backend/accounts/${id}/${action}`,{method:"POST",headers:{origin:"https://other.example"},body}),context);
  assert.equal(denied.status,403);
@@ -83,7 +87,7 @@ test("reversal forwards unchanged request and rejects cross-origin writes", asyn
  const context={params:Promise.resolve({path:["transfers",id,"reversal"]})};
  const body=JSON.stringify({reason:"Duplicate payment",idempotencyKey:"unchanged-request"});
  try {
- const response=await route.POST(new NextRequest(`http://localhost/api/backend/transfers/${id}/reversal`,{method:"POST",headers:{origin:"http://localhost"},body}),context);
+ const response=await route.POST(new NextRequest(`http://localhost/api/backend/transfers/${id}/reversal`,{method:"POST",headers:{origin:"http://localhost",host:"localhost"},body}),context);
  assert.equal(response.status,200);assert.equal(forwarded,body);
  const denied=await route.POST(new NextRequest(`http://localhost/api/backend/transfers/${id}/reversal`,{method:"POST",headers:{origin:"https://other.example"},body}),context);
  assert.equal(denied.status,403);
@@ -111,7 +115,7 @@ test("transfer approval adapter supports filtered queue, detail, and guarded dec
   assert.equal(new URL(forwarded[1].url).pathname, `/api/transfer-requests/${id}`);
 
   const body = JSON.stringify({ reason: "Reviewed against invoice 884" });
-  const decision = await route.POST(new NextRequest(`http://localhost/api/backend/transfer-requests/${id}/approve`, { method: "POST", headers: { origin: "http://localhost" }, body }), { params: Promise.resolve({ path: ["transfer-requests", id, "approve"] }) });
+  const decision = await route.POST(new NextRequest(`http://localhost/api/backend/transfer-requests/${id}/approve`, { method: "POST", headers: { origin: "http://localhost", host: "localhost" }, body }), { params: Promise.resolve({ path: ["transfer-requests", id, "approve"] }) });
   assert.equal(decision.status, 200, "approval decision route must be forwarded");
   assert.equal(forwarded[2].options.body, body);
   assert.equal(new URL(forwarded[2].url).pathname, `/api/transfer-requests/${id}/approve`);
@@ -139,7 +143,7 @@ test("user administration adapter forwards the page query and role change reason
   assert.equal(new URL(calls[0].url).search, query);
 
   const body = JSON.stringify({ role: "OPERATOR", reason: "Role adjusted after review" });
-  const change = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "http://localhost", cookie: "ledgerflow_access_token=mock-token" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
+  const change = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "http://localhost", host: "localhost", cookie: "ledgerflow_access_token=mock-token" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
   assert.equal(change.status, 200, "user role change route must be forwarded");
   assert.equal(new URL(calls[1].url).pathname, `/api/users/${id}/role`);
   assert.equal(calls[1].options.body, body);
@@ -148,5 +152,52 @@ test("user administration adapter forwards the page query and role change reason
   const denied = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "https://other.example" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
   assert.equal(denied.status, 403, "cross-origin role changes must be rejected");
   assert.equal(calls.length, 2, "cross-origin role changes must not reach the backend");
+ } finally { globalThis.fetch = original; }
+});
+
+test("wallet adapter allows only customer wallet endpoints and forwards idempotent writes unchanged", async () => {
+ const route = await loadRoute("../src/app/api/wallet/[...path]/route.ts");
+ const original = globalThis.fetch;
+ const id = "60000000-0000-4000-8000-000000000001";
+ const body = JSON.stringify({ targetAccountId: id, amount: "12.30", idempotencyKey: "wallet-key-1", description: "Wallet transfer" });
+ let forwarded;
+ globalThis.fetch = async (url, options) => { forwarded = { url: String(url), options }; return Response.json({ id, amount: 12.30, status: "COMPLETED" }); };
+ try {
+  const request = new NextRequest("http://localhost/api/wallet/transfers", { method: "POST", headers: { origin: "http://127.0.0.1:3200", host: "127.0.0.1:3200", cookie: "ledgerflow_customer_access_token=customer-token" }, body });
+  const response = await route.POST(request, { params: Promise.resolve({ path: ["transfers"] }) });
+  assert.equal(response.status, 200);
+  assert.equal(forwarded.url, "http://127.0.0.1:8081/api/wallet/transfers");
+  assert.equal(forwarded.options.body, body, "idempotency key and payload must survive the adapter unchanged");
+  assert.equal(forwarded.options.headers.Authorization, "Bearer customer-token");
+  assert.deepEqual(await response.json(), { id, amount: "12.3", status: "COMPLETED" });
+  const noCustomer = new NextRequest("http://localhost/api/wallet/history");
+  assert.equal((await route.GET(noCustomer, { params: Promise.resolve({ path: ["history"] }) })).status, 401);
+  const forbiddenPath = await route.GET(new NextRequest("http://localhost/api/wallet/accounts"), { params: Promise.resolve({ path: ["accounts"] }) });
+  assert.equal(forbiddenPath.status, 404, "wallet adapter must not expose staff account APIs");
+ } finally { globalThis.fetch = original; }
+});
+
+test("wallet proxy disambiguates mixed cookies and blocks customer access to staff API", async () => {
+ const { proxy } = await loadRoute("../src/proxy.ts");
+ const mixed = new NextRequest("http://localhost/wallet", { headers: { cookie: "ledgerflow_customer_access_token=customer; ledgerflow_access_token=staff" } });
+ const walletResponse = proxy(mixed);
+ assert.equal(walletResponse.status, 200);
+ assert.match(walletResponse.headers.get("set-cookie"), /ledgerflow_access_token=;/, "wallet navigation must clear an old staff cookie instead of redirect looping");
+ const staffApi = proxy(new NextRequest("http://localhost/api/backend/users", { headers: { cookie: "ledgerflow_customer_access_token=customer; ledgerflow_access_token=staff" } }));
+ assert.equal(staffApi.status, 401, "a customer session cannot use a staff token through internal API routes");
+});
+
+test("wallet login installs only a customer session cookie", async () => {
+ const route = await loadRoute("../src/app/api/wallet/auth/login/route.ts");
+ const original = globalThis.fetch;
+ try {
+  globalThis.fetch = async url => { assert.equal(String(url), "http://127.0.0.1:8081/api/wallet/auth/login"); return Response.json({ user: { id: "customer-1", role: "CUSTOMER" }, accessToken: "customer-token", expiresAt: "later" }); };
+  const response = await route.POST(new NextRequest("http://localhost/api/wallet/auth/login", { method: "POST", headers: { origin: "http://127.0.0.1:3200", host: "127.0.0.1:3200" }, body: JSON.stringify({ email: "c@example.test", password: "long-password" }) }));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("set-cookie"), /ledgerflow_customer_access_token=customer-token;.*HttpOnly/i);
+  assert.match(response.headers.get("set-cookie"), /ledgerflow_access_token=;/);
+  globalThis.fetch = async () => Response.json({ user: { id: "staff-1", role: "AUDITOR" }, accessToken: "wrong-token" });
+  const denied = await route.POST(new NextRequest("http://localhost/api/wallet/auth/login", { method: "POST", headers: { origin: "http://attacker.example", host: "localhost" }, body: "{}" }));
+  assert.equal(denied.status, 403, "a staff identity must never become a wallet session");
  } finally { globalThis.fetch = original; }
 });

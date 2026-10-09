@@ -42,6 +42,9 @@ class AuditControllerTest {
                 .andExpect(status().isCreated());
         assertThat(jdbc.queryForObject("select count(*) from audit_events", Long.class)).isEqualTo(before+1);
         for (AppRole role : AppRole.values()) {
+            if (role == AppRole.CUSTOMER) {
+                continue;
+            }
             mvc.perform(get("/api/audit").param("action","ACCOUNT_CREATED").param("size","1")
                     .header("Authorization", "Bearer "+jwt.issue(users.saveAndFlush(
                             new AppUser(UUID.randomUUID()+"@reader.test.local","unused",role))).value()))

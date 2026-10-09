@@ -7,7 +7,7 @@ import { Workspace } from "@/components/workspace";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAuthRoute = pathname.startsWith("/auth/");
+  const isAuthRoute = pathname.startsWith("/auth/") || pathname === "/wallet" || pathname.startsWith("/wallet/");
 
   return (
     <TooltipProvider delay={350}>

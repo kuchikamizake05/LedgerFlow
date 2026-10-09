@@ -121,7 +121,8 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const mobileToggle = useRef<HTMLButtonElement>(null);
   const mobileSidebar = useRef<HTMLElement>(null);
   const sessionGeneration = useRef(0);
-  const allowed = permissions(mode, session?.role ?? null);
+  const staffRole = session?.role === "CUSTOMER" ? null : session?.role ?? null;
+  const allowed = permissions(mode, staffRole);
   const navigation: [string, string][] = [
     ["accounts", "Accounts"],
     ["transfers", "Transfers"],
@@ -208,12 +209,18 @@ export function Workspace({ children }: { children: React.ReactNode }) {
         setSession(null);
         return;
       }
+      if (user.role === "CUSTOMER") {
+        setSession(null);
+        await fetch("/api/auth/logout", { method: "POST" });
+        router.replace("/wallet");
+        return;
+      }
       setSession(user);
     } catch {
       // The backend's persisted role is authoritative. Drop cached privileges if it cannot be checked.
       if (requestNumber === sessionGeneration.current) setSession(null);
     }
-  }, []);
+  }, [router]);
   useEffect(() => {
     const timer = window.setTimeout(() => void refreshSession(), 0);
     return () => window.clearTimeout(timer);
@@ -375,7 +382,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     <Context.Provider
       value={{
         mode,
-        role: session?.role ?? null,
+        role: staffRole,
         sessionEmail: session?.email ?? null,
         sessionUserId: session?.id ?? null,
         permissions: allowed,

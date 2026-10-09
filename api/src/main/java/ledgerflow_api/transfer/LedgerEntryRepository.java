@@ -10,4 +10,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, UUID>, JpaSpecificationExecutor<LedgerEntry> {
     List<LedgerEntry> findByTransferIdOrderByCreatedAtAsc(UUID transferId);
+    org.springframework.data.domain.Page<LedgerEntry> findByAccountId(UUID accountId, org.springframework.data.domain.Pageable pageable);
 }

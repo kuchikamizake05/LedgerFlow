@@ -12,6 +12,9 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
+import ledgerflow_api.auth.AppUser;
 
 @Entity
 @Table(name = "accounts")
@@ -40,6 +43,10 @@ public class Account {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @OneToOne
+    @JoinColumn(name = "owner_user_id", unique = true)
+    private AppUser owner;
+
     protected Account() {
         // Default constructor for JPA
     }
@@ -51,6 +58,9 @@ public class Account {
         this.currentBalance = openingBalance;
         this.createdAt = Instant.now();
     }
+
+    public void setOwner(AppUser owner) { this.owner = owner; }
+    public AppUser getOwner() { return owner; }
 
     public UUID getId() {
         return id;

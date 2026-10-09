@@ -174,6 +174,7 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
           LedgerFlow Engine
         </Link>
         <span className="auth-environment">LOCAL DEVELOPMENT</span>
+        <Link className="auth-wallet-link" href="/wallet/login">Customer wallet sign in</Link>
       </header>
       <section className="auth-panel">{children}</section>
     </main>

@@ -39,6 +39,9 @@ public class UserManagementService {
 
     @Transactional
     public UserResponse changeRole(UUID targetId, ChangeUserRoleRequest request) {
+        if (request.role() == AppRole.CUSTOMER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Customer role is assigned only during customer signup");
+        }
         AuditService.Actor jwtActor = audit.currentAuthenticatedActor();
         acquireRoleChangeLock();
 
@@ -51,6 +54,9 @@ public class UserManagementService {
         AppUser target = users.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User was not found"));
         AppRole oldRole = target.getRole();
+        if (oldRole == AppRole.CUSTOMER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Customer roles cannot be changed through staff management");
+        }
         if (oldRole == request.role()) {
             return UserResponse.from(target);
         }

@@ -4,7 +4,19 @@ Run `npm ci` and `npm run dev` from `web`. The root redirects to `/accounts`; lo
 
 The interface uses a light financial workspace theme with shared panel, table, status and form styles. On phones, the navigation button opens the sidebar; Escape or the exposed backdrop closes it and returns keyboard focus. Wide tables scroll within their own containers.
 
-## Authentication and data modes
+## Customer wallet
+
+Open `/wallet/register` to create a customer wallet, then `/wallet/login` to sign in. The staff and wallet login screens link to each other. Customer sessions use a separate HTTP-only cookie; signing into either surface clears the other session in that browser profile. Use separate browser profiles or an incognito window to demonstrate staff and customers simultaneously.
+
+The wallet always uses the real local API; it does not use the internal console's synthetic demo state. It shows the owned balance, public wallet ID, recipient confirmation, instant transfers, and paginated personal activity. Financial actions are disabled for a frozen wallet. Expired sessions return to wallet login. Customer rows in internal user management are read-only.
+
+Enable simulator top ups explicitly on the API using `LEDGERFLOW_SIMULATOR_TOPUPS_ENABLED=true`. They draw from the seeded simulated treasury, are capped at 1,000,000 per operation, and never process real payments. API top ups return 403 while the switch is disabled; this does not terminate an otherwise valid customer session.
+
+Retry references are persisted per wallet before sending a financial request. Network failures, server failures, and 409 conflicts retain the original reference and payload. Definitive validation/policy rejections (400/403) release the reference. An unreadable saved reference blocks new financial actions. Browser storage must be available; clearing it loses the retry reference. Confirmed success and a subsequent balance-refresh failure are shown separately.
+
+Run `python tests/wallet_fullstack_smoke.py` against a disposable real API database with simulator top ups enabled. Set `BASE_URL` (default `http://127.0.0.1:3200`) and `WALLET_SMOKE_API_URL` (default `http://127.0.0.1:8082`). Optional `WALLET_SMOKE_ADMIN_EMAIL` and `WALLET_SMOKE_ADMIN_PASSWORD` enable verification of internal account balances, statements, audit, reconciliation and freeze/unfreeze. The test creates two customer identities, posts simulated movements, exercises a lost-response retry, checks mobile overflow and expired sessions, and writes screenshots to ignored `tests/artifacts/`.
+
+## Internal authentication and data modes
 
 The Next.js server stores the access token in an HttpOnly cookie and forwards it as a bearer token to Spring. Public registration creates an AUDITOR. Create the first TREASURY_ADMIN with the explicit environment bootstrap described in the root README. In production the token cookie requires HTTPS.
 
