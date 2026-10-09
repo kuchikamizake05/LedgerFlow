@@ -117,3 +117,32 @@ test("transfer approval adapter supports filtered queue, detail, and guarded dec
   assert.equal(forwarded.length, 3, "cross-origin decision must not reach the backend");
  } finally { globalThis.fetch = original; }
 });
+
+test("user administration adapter forwards the page query and role change reason", async () => {
+ const route = await loadRoute("../src/app/api/backend/[...path]/route.ts");
+ const original = globalThis.fetch;
+ const id = "50000000-0000-4000-8000-000000000001";
+ const query = "?page=1&size=20";
+ const calls = [];
+ globalThis.fetch = async (url, options) => {
+  calls.push({ url: String(url), options });
+  return Response.json({ id, email: "operator@example.test", role: "OPERATOR" });
+ };
+ try {
+  const list = await route.GET(new NextRequest(`http://localhost/api/backend/users${query}`), { params: Promise.resolve({ path: ["users"] }) });
+  assert.equal(list.status, 200, "user list route must be forwarded");
+  assert.equal(new URL(calls[0].url).pathname, "/api/users");
+  assert.equal(new URL(calls[0].url).search, query);
+
+  const body = JSON.stringify({ role: "OPERATOR", reason: "Role adjusted after review" });
+  const change = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "http://localhost" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
+  assert.equal(change.status, 200, "user role change route must be forwarded");
+  assert.equal(new URL(calls[1].url).pathname, `/api/users/${id}/role`);
+  assert.equal(calls[1].options.body, body);
+  assert.equal(calls[1].options.headers.Authorization, "Bearer mock-token");
+
+  const denied = await route.POST(new NextRequest(`http://localhost/api/backend/users/${id}/role`, { method: "POST", headers: { origin: "https://other.example" }, body }), { params: Promise.resolve({ path: ["users", id, "role"] }) });
+  assert.equal(denied.status, 403, "cross-origin role changes must be rejected");
+  assert.equal(calls.length, 2, "cross-origin role changes must not reach the backend");
+ } finally { globalThis.fetch = original; }
+});
