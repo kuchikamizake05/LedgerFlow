@@ -118,6 +118,8 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const [pendingLiveMode, setPendingLiveMode] = useState(false);
   const [session, setSession] = useState<SessionUser | null>(null);
   const generation = useRef(0);
+  const mobileToggle = useRef<HTMLButtonElement>(null);
+  const mobileSidebar = useRef<HTMLElement>(null);
   const sessionGeneration = useRef(0);
   const allowed = permissions(mode, session?.role ?? null);
   const navigation: [string, string][] = [
@@ -130,6 +132,54 @@ export function Workspace({ children }: { children: React.ReactNode }) {
     ["system-status", "System status"],
   ];
   if (session?.role === "TREASURY_ADMIN") navigation.splice(6, 0, ["users", "Users"]);
+  const closeMobileNavigation = useCallback(() => {
+    setMobile(false);
+    if (mobile) mobileToggle.current?.focus();
+  }, [mobile]);
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 801px)");
+    function closeOnDesktop() {
+      if (desktop.matches) setMobile(false);
+    }
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
+  useEffect(() => {
+    if (!mobile) return;
+    const focusable = () => Array.from(
+      mobileSidebar.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+    focusable()[0]?.focus();
+    function containNavigationFocus(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobileNavigation();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      const first = items[0];
+      const last = items.at(-1);
+      if (!first || !last) {
+        event.preventDefault();
+        return;
+      }
+      if (!mobileSidebar.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", containNavigationFocus);
+    return () => document.removeEventListener("keydown", containNavigationFocus);
+  }, [closeMobileNavigation, mobile]);
   useEffect(() => {
     function expired() {
       setSession(null);
@@ -344,17 +394,17 @@ export function Workspace({ children }: { children: React.ReactNode }) {
       <a className="skip" href="#main">
         Skip to content
       </a>
-      <aside className={`sidebar ${mobile ? "open" : ""}`}>
+      <aside ref={mobileSidebar} className={`sidebar ${mobile ? "open" : ""}`}>
         <div className="brand">
           <strong>
             LedgerFlow<span className="brand-mark">╱</span>
           </strong>
           <small>OPERATIONS</small>
         </div>
-        <nav aria-label="Main navigation">
+        <nav id="main-navigation" aria-label="Main navigation">
           {navigation.map(([path, label]) => (
             <Link
-              onClick={() => setMobile(false)}
+              onClick={closeMobileNavigation}
               key={path}
               href={`/${path}`}
               aria-current={pathname === `/${path}` ? "page" : undefined}
@@ -376,8 +426,11 @@ export function Workspace({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <div className="inline">
             <button
+              ref={mobileToggle}
               className="mobile-toggle"
               aria-label="Toggle navigation"
+              aria-controls="main-navigation"
+              aria-expanded={mobile}
               onClick={() => setMobile(!mobile)}
             >
               <Icon name="menu" />
@@ -430,6 +483,14 @@ export function Workspace({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </header>
+        {mobile && (
+          <button
+            className="mobile-nav-backdrop"
+            type="button"
+            aria-label="Close navigation"
+            onClick={closeMobileNavigation}
+          />
+        )}
         <main id="main" key={mode} className="content">
           <div className="mode-note">
             {mode === "demo"
