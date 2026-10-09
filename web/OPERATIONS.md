@@ -2,6 +2,8 @@
 
 Run `npm ci` and `npm run dev` from `web`. The root redirects to `/accounts`; login and registration are at `/auth/login` and `/auth/register`.
 
+The interface uses a light financial workspace theme with shared panel, table, status and form styles. On phones, the navigation button opens the sidebar; Escape or the exposed backdrop closes it and returns keyboard focus. Wide tables scroll within their own containers.
+
 ## Authentication and data modes
 
 The Next.js server stores the access token in an HttpOnly cookie and forwards it as a bearer token to Spring. Public registration creates an AUDITOR. Create the first TREASURY_ADMIN with the explicit environment bootstrap described in the root README. In production the token cookie requires HTTPS.
@@ -55,6 +57,8 @@ In Local API mode the Accounts screen shows Active/Frozen status. Treasury admin
 - Run `python tests/reversal_audit_smoke.py` for mocked audit and reversal confirmation flows.
 - Run `python tests/freeze_smoke.py` for mocked admin freeze/unfreeze and read-only role controls.
 - Run the approval browser test described in `tests/approval_smoke.py` for mocked submission and decisions.
+- Run `python tests/users_smoke.py` for mocked role management, last-admin conflicts and uncertain self-demotion recovery.
+- Run `python tests/navigation_smoke.py` for mobile navigation state, focus containment and dismissal. Set `BASE_URL` to the local server address; this test defaults to port 3200.
 
 Browser tests use isolated mocked authentication and API responses where documented in the test; backend authorization and financial correctness are verified separately using real PostgreSQL integration tests. Screenshots are stored under ignored `tests/artifacts/`.
 

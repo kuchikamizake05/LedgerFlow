@@ -31,8 +31,10 @@ Preserve package manager, runtime, three existing roles, registration default an
 - [x] Docker PostgreSQL 17 available; no fallback database provisioning required.
 - [x] Review lock order, authorization, current audit actor, no password exposure; run dependency audit and update operations docs.
 - [x] Once user management is complete, compare frontend-workbench references and follow user's selected direction.
-- [ ] Implement coherent visual slices preserving features, inspect actual desktop/mobile screenshots, verify flows, record provenance and QA.
+- [x] Implement coherent visual slices preserving features, inspect actual desktop/mobile screenshots, verify flows, record provenance and QA.
 
 ## User management verification
 
 RED checkpoints: 67227c1 (missing users adapter returned 404), f6927bc (nine backend tests executed and failed on missing endpoints/current access). GREEN checkpoints: ee27eeb frontend, 116ec1b backend. API: 92 tests, zero failures/errors/skips on PostgreSQL 17 Testcontainers, Flyway through V10. Web: 13 Node tests, lint, typecheck, production build, users smoke and all five prior browser smokes passed before redesign. Browser tests mock authentication/API; no actual full-stack browser claim. Production npm audit zero findings; existing five high development lint-chain findings remain. Coverage percentage remains unmeasured. No push/deployment.
+
+Redesign: navigation RED checkpoint 2486574 captures missing aria-controls. Light tokens, shared surfaces, buttons/dialogs, table/card spacing and mobile navigation completed. Thirteen Node tests, lint/typecheck/build and seven browser smokes passed; final CSS fixes rechecked with build/lint and relevant smokes. Actual screenshots and selected computed contrast ratios are recorded in .frontend/qa.md. Parent inspected desktop/phone layouts and populated approval/user dialogs. No new dependency or remote deployment.
