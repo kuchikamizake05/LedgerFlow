@@ -14,8 +14,9 @@ New registrations receive AUDITOR access. This release has no role-management sc
 
 | Operation | AUDITOR | OPERATOR | TREASURY_ADMIN |
 | --- | --- | --- | --- |
-| Read accounts, statements, audit and reconciliation | Yes | Yes | Yes |
-| Transfer between ordinary accounts | No | Yes | Yes |
+| Read accounts, statements, approval queue, audit and reconciliation | Yes | Yes | Yes |
+| Submit ordinary transfer requests | No | Yes | Yes |
+| Approve/reject another user's transfer request | No | No | Yes |
 | Create accounts or allocate treasury funds | No | No | Yes |
 | Reverse a completed original transfer | No | No | Yes |
 | Freeze or unfreeze an ordinary account | No | No | Yes |
@@ -23,6 +24,10 @@ New registrations receive AUDITOR access. This release has no role-management sc
 The system treasury cannot be the source of an ordinary transfer. Allocations go through the deposits endpoint. Live actions are authorized by the backend, while demo actions affect synthetic browser state only.
 
 ## Ledger integrity
+
+All live ordinary transfers require approval. Submit the existing transfer payload to `POST /api/transfer-requests`; a pending request moves and reserves no money. Read the queue through `GET /api/transfer-requests` with page, size and optional status filters. Another treasury administrator decides through `POST /api/transfer-requests/{id}/approve` or `/reject` with a required reason (up to 255 characters). Requesters cannot decide their own requests. Approval rechecks funds, freeze state and destination limits and commits the completed transfer, journal and audit together. Failed approval leaves the request pending. Rejection changes no balances. Direct `POST /api/transfers` returns 409 to prevent bypass.
+
+Keep submission keys and payloads unchanged after uncertain confirmation. The same decision actor, action and reason can retry without duplicate postings. Deposit and reversal keep their existing admin flows. To exercise approvals locally, use distinct authenticated users; a second admin can be provisioned by starting the API with a different new bootstrap email and removing the bootstrap credentials afterward.
 
 Successful movements update account balances and create paired journal entries in one transaction. Account locks use deterministic ordering. Idempotency keys identify an unchanged request; changing its payload returns a conflict. Preserve the original key and payload after uncertain confirmation, then retry the unchanged request.
 
@@ -34,6 +39,8 @@ Reconciliation is available through authenticated `GET /api/reconciliation` and 
 
 Run `./mvnw test` in `api` (Windows: `mvnw.cmd test`). Docker is required for PostgreSQL integration tests. Run the frontend test, lint, build and browser checks described in `web/OPERATIONS.md`.
 
+When Docker is unavailable, an optional test-only profile uses an existing dedicated PostgreSQL database. Set `LEDGERFLOW_TEST_DB_URL`, `LEDGERFLOW_TEST_DB_USERNAME`, and `LEDGERFLOW_TEST_DB_PASSWORD`, then run `mvnw.cmd -Dspring.profiles.active=local-test-db test`. The test user must be able to create schemas; each Spring context creates and removes its own randomly named schema. Use a disposable test database. This profile does not change application runtime configuration or replace verification against the default PostgreSQL 17 container.
+
 ## Audit and reversals
 
 Successful account creation, transfer, treasury allocation and reversal commit an audit event in the same transaction. Events include the actor, action, resource and timestamp, and reject updates, deletes and truncation. Retries create no extra success event. The `/audit` page supports paginated browsing and exact action/resource filters. Historical transactions before audit was introduced are not backfilled with invented actors; login attempts are outside this audit scope.
@@ -44,4 +51,4 @@ Admins can reverse a completed original transfer in the live Ledger transaction 
 
 Admins can freeze/unfreeze ordinary accounts from the live Accounts page or `POST /api/accounts/{id}/freeze` and `/unfreeze` with a required reason (up to 255 characters). New transfers, treasury allocations and reversals involving a frozen account return 409 without financial changes. Previously committed exact retries remain readable. Reads and reconciliation continue; the system treasury cannot be frozen. State changes record audit events atomically; repeating the current state creates no additional event.
 
-Approvals, rate limiting, token revocation and production deployment are not implemented. Logout removes the browser cookie; an already issued bearer token remains valid until expiry. Direct local API startup currently has a development-only JWT fallback; always provide a private secret for a deployed environment. The default local database credentials are development credentials.
+Rate limiting, token revocation and production deployment are not implemented. Logout removes the browser cookie; an already issued bearer token remains valid until expiry. Direct local API startup currently has a development-only JWT fallback; always provide a private secret for a deployed environment. The default local database credentials are development credentials.

@@ -9,7 +9,11 @@ The Next.js server stores the access token in an HttpOnly cookie and forwards it
 - Demo preview is the default. Account creation, transfers and allocations affect synthetic session state. Reloading or changing mode resets it.
 - Local API connects to Spring at `http://127.0.0.1:8081`. Override the origin through `LEDGERFLOW_API_URL` in `.env.local`, then restart Next.js. Requests change the development database.
 
-Live actions follow the signed-in role: auditors read, operators transfer ordinary funds, and treasury administrators also create accounts and allocate from treasury. The backend remains authoritative.
+Live actions follow the signed-in role: auditors read, operators submit ordinary transfer requests, and treasury administrators also decide other users' requests, create accounts and allocate from treasury. The backend remains authoritative.
+
+## Transfer approvals
+
+Live ordinary transfer submission creates a pending request and does not reserve or move funds. Open `/approvals` to browse requests and inspect their status. A different treasury administrator approves or rejects with a required reason. Approval rechecks funds and frozen accounts, then posts the transfer and journal atomically. Failed approval leaves the request pending. Rejection posts no money movement. Requesters cannot decide their own requests. Treasury deposits and completed-transfer reversals keep their existing workflows. Demo mode makes no claim of persisted approvals.
 
 ## Statements and reconciliation
 
@@ -20,6 +24,8 @@ Run reconciliation explicitly from the Ledger page in Local API mode. The report
 ## Safe retries
 
 After unknown payment confirmation, keep the same idempotency key and original payload. Retrying an unchanged transfer or allocation returns the existing result without another movement. A changed payload returns a conflict. Inputs accept a period decimal separator and at most two fractional digits.
+
+Unconfirmed approval decisions are saved separately for each user and request in browser storage. Reopen the request to retry the original action and reason; changing either after a committed decision returns a conflict. Browser storage must be available before deciding. Clearing it removes the saved retry reference.
 
 ## Audit and reversals
 
@@ -42,6 +48,7 @@ In Local API mode the Accounts screen shows Active/Frozen status. Treasury admin
 - Run `python tests/live_smoke.py` against the same server for mocked live permissions, filters, expiry and reconciliation flows.
 - Run `python tests/reversal_audit_smoke.py` for mocked audit and reversal confirmation flows.
 - Run `python tests/freeze_smoke.py` for mocked admin freeze/unfreeze and read-only role controls.
+- Run the approval browser test described in `tests/approval_smoke.py` for mocked submission and decisions.
 
 Browser tests use isolated mocked authentication and API responses where documented in the test; backend authorization and financial correctness are verified separately using real PostgreSQL integration tests. Screenshots are stored under ignored `tests/artifacts/`.
 
