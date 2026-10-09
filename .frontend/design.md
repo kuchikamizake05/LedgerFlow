@@ -1,0 +1,11 @@
+# Light financial workspace design
+
+User selected a light, tidy financial dashboard with clear tables. Implement after the user-management feature passes its checks.
+
+Existing stack: Next.js App Router, React, Tailwind/CSS, local UI primitives, Geist and selected icons. Preserve routes: accounts, payment, approvals, ledger/transaction details, audit, reconciliation, status, users and authentication.
+
+Design target: pale neutral canvas, white surfaces/sidebar, ink text, blue primary actions, restrained green/amber/red status treatments, consistent 8px spacing scale and comfortable form controls. Use tabular numbers for money. Strong page heading, short supporting copy, aligned primary actions, compact filter toolbars and readable table headers/rows. Keep demo/live indicator explicit; no fabricated live summaries or charts.
+
+Responsive behavior: sidebar on desktop; accessible mobile navigation toggle and dismissal. Stack headings/actions and form columns on phones; tables scroll within a labeled container instead of widening the viewport. Long emails and references wrap appropriately. Dialogs/portals share theme tokens. Visible keyboard focus, contrast checks and reduced motion apply throughout.
+
+Implementation scope: common shell and tokens first, then account/payment primary flows and data tables; align approvals/users/audit/ledger and auth states with the same system. Keep all loading, empty, error, success, permission and unknown-retry states usable.

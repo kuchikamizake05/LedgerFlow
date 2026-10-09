@@ -8,7 +8,7 @@ Copy `.env.example` to `.env`, set a private `LEDGERFLOW_JWT_SECRET` of at least
 
 To create the initial treasury administrator, explicitly set both `LEDGERFLOW_BOOTSTRAP_ADMIN_EMAIL` and `LEDGERFLOW_BOOTSTRAP_ADMIN_PASSWORD` before API startup. Use a valid email and a password of at least 12 characters and no more than 72 UTF-8 bytes. Remove those two variables after successful bootstrap and recreate the API container. They are optional for later starts. Repeated bootstrap of an enabled admin leaves its password unchanged; an existing non-admin or disabled account is a conflict, never an automatic promotion.
 
-New registrations receive AUDITOR access. This release has no role-management screen; bootstrap is the supported way to create the first operational admin.
+New registrations receive AUDITOR access. Bootstrap creates the initial operational admin; subsequent role changes are available to administrators on `/users`.
 
 ## Permissions
 
@@ -20,8 +20,13 @@ New registrations receive AUDITOR access. This release has no role-management sc
 | Create accounts or allocate treasury funds | No | No | Yes |
 | Reverse a completed original transfer | No | No | Yes |
 | Freeze or unfreeze an ordinary account | No | No | Yes |
+| List users and change roles with an audit reason | No | No | Yes |
 
 The system treasury cannot be the source of an ordinary transfer. Allocations go through the deposits endpoint. Live actions are authorized by the backend, while demo actions affect synthetic browser state only.
+
+Administrators browse `GET /api/users?page=0&size=20` and change a role through `POST /api/users/{id}/role` with `{role, reason}`. Roles are AUDITOR, OPERATOR and TREASURY_ADMIN; the reason is required and accepts at most 255 characters. The last enabled administrator cannot be demoted, including concurrent changes. Unchanged roles create no extra audit event. Successful changes and their full reason commit together in the audit trail. Password hashes are never returned.
+
+Every authenticated request checks that the signed token's user still exists and is enabled, then uses the current database role. Existing tokens therefore gain or lose role permissions on subsequent requests without another login. `GET /api/auth/me` returns the current identity; the frontend refreshes it and drops cached privileges when it cannot confirm access. Logout still does not revoke an otherwise valid bearer token.
 
 ## Ledger integrity
 

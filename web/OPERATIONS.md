@@ -11,6 +11,12 @@ The Next.js server stores the access token in an HttpOnly cookie and forwards it
 
 Live actions follow the signed-in role: auditors read, operators submit ordinary transfer requests, and treasury administrators also decide other users' requests, create accounts and allocate from treasury. The backend remains authoritative.
 
+## Users and roles
+
+Treasury administrators can open `/users` in Local API mode to browse registered users and change their role. Select a user, choose a role, supply a reason and confirm the change. The last enabled administrator cannot be demoted. The audit trail records the acting user, target, previous/new roles and reason. Existing tokens obey the current database role on subsequent requests. Self-demotion refreshes the current session and removes admin controls.
+
+An uncertain response triggers a fresh read rather than a success claim; inspect the current role and audit trail before another change. Demo mode offers no persisted user management. Failed identity refresh removes cached role controls without pretending the backend accepted a change.
+
 ## Transfer approvals
 
 Live ordinary transfer submission creates a pending request and does not reserve or move funds. Open `/approvals` to browse requests and inspect their status. A different treasury administrator approves or rejects with a required reason. Approval rechecks funds and frozen accounts, then posts the transfer and journal atomically. Failed approval leaves the request pending. Rejection posts no money movement. Requesters cannot decide their own requests. Treasury deposits and completed-transfer reversals keep their existing workflows. Demo mode makes no claim of persisted approvals.
@@ -54,4 +60,4 @@ Browser tests use isolated mocked authentication and API responses where documen
 
 ## Remaining limitations
 
-Global journal browsing, volume aggregates, server request metrics and persisted health history are unavailable. The concurrency lab does not send load. Role management, token revocation and rate limiting remain subsequent work. Audit covers successful financial mutations and account freeze status changes; login-event audit is not implemented. Health details are shown only when the backend exposes them.
+Global journal browsing, volume aggregates, server request metrics and persisted health history are unavailable. The concurrency lab does not send load. Token revocation and rate limiting remain subsequent work. Audit covers successful financial mutations, account freeze status and role changes; login-event audit is not implemented. Health details are shown only when the backend exposes them.
