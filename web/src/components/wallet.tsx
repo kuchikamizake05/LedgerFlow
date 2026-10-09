@@ -76,6 +76,19 @@ export function WalletAuth({ mode }: { mode: "login" | "register" }) {
         <Link href="/wallet"><span className="wallet-brand-icon"><WalletIcon size={18} /></span> LedgerFlow Wallet</Link>
         <span>SIMULATED FUNDS</span>
       </header>
+      <div className="wallet-auth-layout">
+        <section className="wallet-introduction" aria-labelledby="wallet-introduction-title">
+          <div className="wallet-intro-symbol" aria-hidden="true"><WalletIcon size={30} /></div>
+          <div className="wallet-eyebrow">A SIMPLE WAY TO SIMULATE</div>
+          <h2 id="wallet-introduction-title">Your wallet.<br /> One clear view.</h2>
+          <p>Keep track of your balance, send to another wallet, and follow every movement.</p>
+          <ul className="wallet-intro-features">
+            <li><ArrowDownLeft size={18} aria-hidden="true" /><div><strong>Add a simulated balance</strong><span>Start with zero and try a top up.</span></div></li>
+            <li><ArrowLeftRight size={18} aria-hidden="true" /><div><strong>Send with confidence</strong><span>Confirm the recipient before transferring.</span></div></li>
+            <li><ArrowUpRight size={18} aria-hidden="true" /><div><strong>Follow your activity</strong><span>See incoming and outgoing movements.</span></div></li>
+          </ul>
+          <div className="wallet-intro-note">A payment simulation. No real money involved.</div>
+        </section>
       <section className="wallet-auth-card">
         <div className="wallet-eyebrow">PERSONAL WALLET</div>
         <h1>{done ? "Wallet created" : register ? "Create your wallet" : "Welcome back"}</h1>
@@ -107,6 +120,7 @@ export function WalletAuth({ mode }: { mode: "login" | "register" }) {
         <div className="wallet-auth-switch">Staff member? <Link href="/auth/login">Operations sign in</Link></div>
         <div className="wallet-sim-note">All balances and transfers in this experience are simulated.</div>
       </section>
+      </div>
     </main>
   );
 }
@@ -284,19 +298,28 @@ export function WalletHome() {
             <p>Manage your simulated balance and transfers.</p>
           </div>
         </div>
-        <section className="wallet-balance-card">
+        <div className="wallet-overview">
+        <section className="wallet-balance-card" aria-label="Wallet balance">
           <div className="wallet-balance-top">
             <span>Available balance</span>
             <span className="wallet-pill wallet-pill-light">SIMULATED</span>
           </div>
-          <strong>{account ? money(account.balance) : "Loading…"}</strong>
+          <strong className={account && money(account.balance).length > 22 ? "wallet-large-balance" : undefined}>{account ? money(account.balance) : "Loading…"}</strong>
+          <div className="wallet-balance-caption"><span className="wallet-status-dot" aria-hidden="true" />{account ? account.frozen ? "Wallet frozen" : "Ready for simulated transfers" : "Connecting to your wallet"}</div>
+        </section>
+        <section className="wallet-reference" aria-label="Your wallet ID">
+          <div className="wallet-eyebrow">RECEIVE A TRANSFER</div>
+          <h2>Your wallet ID</h2>
+          <p>Share this ID with another wallet user.</p>
+          <code>{account ? account.id : "Loading wallet ID…"}</code>
           <div className="wallet-id-row">
-            <span>Wallet ID <b>{account ? shortId(account.id) : "—"}</b></span>
-            <button aria-label="Copy full wallet ID" className="wallet-copy" onClick={copyId}>
+            <span>For simulated transfers</span>
+            <button aria-label="Copy full wallet ID" className="wallet-copy" disabled={!account} onClick={copyId}>
               <Copy size={14} />{copied ? "Copied" : "Copy ID"}
             </button>
           </div>
         </section>
+        </div>
         {account?.frozen && <p className="wallet-error wallet-banner" role="status">This wallet is frozen. Top ups and transfers are unavailable.</p>}
         {error && <p className="wallet-error wallet-banner" role="alert">{error}</p>}
         {notice && <p className="wallet-success wallet-banner" role="status">{notice}</p>}
@@ -343,14 +366,14 @@ export function WalletHome() {
         <section className="wallet-panel wallet-history">
           <div className="wallet-history-heading">
             <div><h2>Recent activity</h2><p>Your personal wallet history</p></div>
-            <span>{history?.totalElements ?? 0} transactions</span>
+            <span>{history?.totalElements ?? 0} {history?.totalElements === 1 ? "transaction" : "transactions"}</span>
           </div>
           {historyLoading ? (
             <div className="wallet-empty">Loading activity…</div>
           ) : historyError ? (
             <div className="wallet-error" role="alert">Activity could not be loaded: {historyError}</div>
           ) : !history?.content.length ? (
-            <div className="wallet-empty">No activity yet. Your transactions will appear here.</div>
+            <div className="wallet-empty"><span className="wallet-empty-icon" aria-hidden="true"><ArrowLeftRight size={24} /></span><strong>Your first movement starts here</strong><p>Try a simulated top up, then send to another wallet. Your activity will appear here.</p></div>
           ) : (
             <div className="wallet-entries">
               {history.content.map(entry => (
