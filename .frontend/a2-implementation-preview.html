@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LedgerFlow · Hasil implementasi A2</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f3e9;color:#202b25;font:16px/1.6 system-ui,sans-serif}main{max-width:1400px;padding:48px 24px;margin:auto}h1{font-size:clamp(32px,4vw,54px);letter-spacing:-.045em;line-height:1.1;margin:12px 0 20px}h2{margin:0;font-size:22px}p{color:#62695c}a{color:inherit;text-underline-offset:4px}nav{display:flex;gap:16px;flex-wrap:wrap;margin:24px 0 36px}.eyebrow{font-size:11px;font-weight:600;letter-spacing:.12em}button{font:inherit;padding:10px 22px;border:1px solid #b2b8a9;border-radius:30px;background:transparent;color:#202b25;cursor:pointer}button[aria-pressed=true]{background:#202b25;color:#d9f05b}a:focus-visible,button:focus-visible{outline:3px solid #202b25;outline-offset:4px}.controls{display:flex;gap:10px;margin:24px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}article{border:1px solid #e0e1d6;border-radius:22px;background:#fff;overflow:hidden}.copy{padding:24px}.copy p{font-size:14px;margin-bottom:0}.image{display:block;padding:12px;background:#eeeee5}.image img{display:block;width:100%;height:auto}figure{margin:0}.phone .image{max-height:780px;overflow:auto}.phone img{max-width:390px;margin:auto}figcaption{padding:16px 24px;font-size:12px;color:#62695c}.note{font-size:13px;margin-top:28px;max-width:850px}[hidden]{display:none!important}@media(max-width:760px){.grid{grid-template-columns:1fr}main{padding-top:32px}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">LEDGERFLOW / A2 / HASIL IMPLEMENTASI</div>
+<h1>Satu gaya, dua ruang.</h1>
+<p>Wallet dan dashboard internal kini memakai latar krem, card putih, aksen lime, motif aliran, dan tipografi yang sama.</p>
+<nav aria-label="Buka aplikasi"><a href="http://127.0.0.1:3200/wallet" target="_blank" rel="noopener">Buka wallet ↗</a><a href="http://127.0.0.1:3200/auth/login" target="_blank" rel="noopener">Masuk dashboard staf ↗</a><a href="a2-character-preview.html">Lihat desain A2 yang dipilih</a></nav>
+<div class="controls" role="group" aria-label="Pilih tampilan"><button data-view="desktop" aria-pressed="true">Desktop</button><button data-view="mobile" aria-pressed="false">Mobile</button></div>
+<div class="grid">
+<article><div class="copy"><h2>Wallet pengguna</h2><p>Card saldo, aksi Send / Top up / Receive, timeline per hari, dan navigasi bawah pada ponsel. Form transaksi tetap memakai API simulasi.</p></div>
+<figure data-device="desktop"><a class="image" href="a2-implementation/wallet-desktop.png" target="_blank" rel="noopener" aria-label="Gambar wallet desktop ukuran penuh"><img src="a2-implementation/wallet-desktop.png" alt="Wallet desktop yang sudah diterapkan"></a><figcaption>Diambil dari aplikasi lokal dengan akun simulasi.</figcaption></figure>
+<figure class="phone" data-device="mobile" hidden><a class="image" href="a2-implementation/wallet-mobile.png" target="_blank" rel="noopener" aria-label="Gambar wallet mobile ukuran penuh"><img src="a2-implementation/wallet-mobile.png" alt="Wallet pada viewport 390 piksel"></a><figcaption>Viewport 390 × 844. Gambar seluruh halaman; klik untuk ukuran penuh.</figcaption></figure>
+</article>
+<article><div class="copy"><h2>Dashboard internal</h2><p>Sidebar dengan penanda lime, ringkasan dalam card putih, tombol dan tabel seragam. Approval, ledger, audit, dan pengguna tetap tersedia.</p></div>
+<figure data-device="desktop"><a class="image" href="a2-implementation/dashboard-desktop.png" target="_blank" rel="noopener" aria-label="Gambar dashboard desktop ukuran penuh"><img src="a2-implementation/dashboard-desktop.png" alt="Dashboard akun dengan tema A2"></a><figcaption>Diambil dari pengujian browser dalam mode demo dengan data sintetis.</figcaption></figure>
+<figure class="phone" data-device="mobile" hidden><a class="image" href="a2-implementation/dashboard-mobile.png" target="_blank" rel="noopener" aria-label="Gambar dashboard mobile ukuran penuh"><img src="a2-implementation/dashboard-mobile.png" alt="Dashboard pada viewport 390 piksel"></a><figcaption>Viewport 390 × 844. Tabel dapat digeser ke samping dalam aplikasi.</figcaption></figure>
+</article>
+</div>
+<p class="note">Gambar ini adalah tangkapan aplikasi yang sudah berjalan, bukan mockup Stitch. Klik tautan aplikasi untuk berinteraksi. Login wallet dan staf menggunakan sesi berbeda; gunakan profil browser terpisah untuk membuka keduanya bersamaan.</p>
+</main><script>document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-view]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));document.querySelectorAll('[data-device]').forEach(figure=>figure.hidden=figure.dataset.device!==button.dataset.view)}));</script></body></html>

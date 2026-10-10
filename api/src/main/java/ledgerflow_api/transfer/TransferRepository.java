@@ -12,6 +12,10 @@ import jakarta.persistence.LockModeType;
 
 @Repository
 public interface TransferRepository extends JpaRepository<Transfer, UUID> {
+    boolean existsBySourceAccountIdAndTargetAccountIdAndReversalOfIsNull(UUID sourceAccountId, UUID targetAccountId);
+
+    boolean existsBySourceAccountIdAndReversalOfIsNull(UUID sourceAccountId);
+
     Optional<Transfer> findByIdempotencyKey(String idempotencyKey);
 
     Optional<Transfer> findByReversalOf(UUID reversalOf);

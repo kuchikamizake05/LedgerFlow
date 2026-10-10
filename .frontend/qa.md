@@ -26,3 +26,29 @@ Status: completed for the selected light-theme redesign and mobile navigation sc
 Browser smokes with mocked API responses verify UI behavior; real PostgreSQL integration tests verify backend authorization and financial correctness separately. No deployment is included.
 
 Backend user-management phase: 92 tests, zero failures/errors/skips on PostgreSQL 17 Testcontainers. No measured coverage percentage or full-stack browser result is claimed. npm production audit found zero vulnerabilities; five existing high development lint-chain findings remain. No new dependencies or donor runtime were installed. Server left on port 3200 for local inspection; user port 3100 untouched.
+
+## A2 wallet and matching staff dashboard — 2026-10-10
+
+Status: implemented and verified locally; no commit, push or deployment.
+
+- Passed: npm run lint, local TypeScript compiler --noEmit, npm test (20/20), npm run build. Production dependency audit: zero findings; full development audit not rerun for this slice.
+- Passed: wallet activity helper tests written RED first then GREEN; targeted helper coverage 100% lines/branches/functions. This is not repository-wide coverage. Tests cover Jakarta midnight/month boundaries, order, immutability, empty and invalid dates.
+- Passed: smoke.py, navigation_smoke.py, live_smoke.py, approval_smoke.py, users_smoke.py, reversal_audit_smoke.py and freeze_smoke.py. Main staff smoke rerun after final styling. Mocked UI tests verify operational routes, role restrictions, approvals, retries, errors and mobile focus behavior.
+- Passed: wallet_fullstack_smoke.py against real local PostgreSQL/API, rerun after card/bottom-navigation regressions. Includes signup/login, topup, recipient confirmation/transfer, lost-response retry without duplication, rejection/recovery, customer/staff isolation, reconciliation, freezing, logout and expired sessions. Receive detail, Send/Top up anchors and mobile Home/Activity navigation checked.
+- Responsive checks passed at actual 390x844 phone and 768 tablet; auth at 360/768/1280. Desktop wallet/staff inspected in the in-app browser. Requested in-app phone override actually produced 582px, so true 390px evidence comes from repository browser tests. No document overflow in tested views; tables scroll inside containers.
+- Selected rendered contrast ratios: ink/cream 13.17:1, muted/cream 5.11:1, muted/white 5.68:1, white/ink 14.65:1, ink/lime 11.55:1. Card controls measured 44px; reduced-motion styles reviewed. Comprehensive accessibility conformance remains unverified.
+- Backend source unchanged. Current API artifact packaged with tests skipped; backend suite not rerun. Local API health UP, bound to 127.0.0.1:8082; frontend 3200 and evidence server 3211.
+- Review board verified: all four images loaded, Desktop/Mobile toggle shows correct captures. Screenshots: web/tests/artifacts/a2-implementation-board.png, a2-wallet-desktop.png, a2-dashboard-desktop.png, wallet-mobile.png, accounts-mobile.png. The board is static evidence, not an interactive app.
+- Known content limits: existing English application copy retained; activity uses generic received/sent labels because API does not expose recipient/type details. No fabricated transaction names or live financial data.
+
+## Approved A onboarding and transaction receipt — 2026-10-10
+
+Implemented: collapsible/reopenable per-wallet checklist; server progress across all transactions independent of balance/page; customer-scoped receipt GET with real participants, status/time, description and correction reference. Dialog responds to phone/desktop, supports error retry, copy and browser print-to-PDF. Source patterns recorded in onboarding-transaction-references.md; no donor images/code added to app.
+
+Passed: 22 frontend tests, lint, local typecheck and production build; 97 backend tests on isolated local PostgreSQL schemas using local-test-db profile (Docker unavailable). Expanded WalletControllerTest rerun 4/4 with actual reversal status and compensation excluded from onboarding. Backend RED was missing progress endpoint 404; frontend label/time RED witnessed then GREEN, helper 100% line/branch/function coverage only.
+
+Expanded real wallet_fullstack_smoke.py passed: onboarding 1/3 to 3/3, hide/reopen/reload, incoming-only wallet remains 1/3, progress/detail failure retry, receipt after confirmed mutation and history row, unrelated customer 404, dialog Tab containment/Escape/focus return, actual 390px no overflow, print mode hides wallet/actions and retains simulation record, A4 PDF generated. Existing transfer, idempotent lost-response retry, frozen access, audit/reconciliation and expired-session checks passed. PDF text extraction unavailable; browser print checks passed, no native print-dialog automation claimed. Production npm audit zero findings.
+
+Actual desktop/mobile captures inspected: onboarding-desktop/mobile.png and receipt-desktop/mobile.png under web/tests/artifacts. Modal images use viewport captures to avoid full-page fixed-position artifacts. Static result gallery source .frontend/onboarding-transaction-results.html served at localhost:3211 with ignored QA captures copied into onboarding-results/. No deployment/commit/push. Comprehensive accessibility conformance and repository-wide coverage unverified.
+
+Result gallery browser check passed: four captures loaded, source/app/PDF links present. Final lint/build rerun after progress error expansion fix passed.

@@ -35,7 +35,7 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
         offset={{ top: "84px", right: "24px" }}
         mobileOffset={{ top: "80px", right: "16px", left: "16px" }}
         position="top-right"
-        theme="dark"
+        theme="light"
         toastOptions={{ className: "ledgerflow-toast" }}
       />
     </FeedbackContext.Provider>

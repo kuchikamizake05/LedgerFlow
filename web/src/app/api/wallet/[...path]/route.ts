@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/request-security";
 
 const uuid = "[a-fA-F0-9-]{36}";
-const reads = new RegExp(`^(me|history|recipient/${uuid})$`);
+const reads = new RegExp(`^(me|history|progress|recipient/${uuid}|transactions/${uuid})$`);
 const writes = /^(topups|transfers)$/;
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {

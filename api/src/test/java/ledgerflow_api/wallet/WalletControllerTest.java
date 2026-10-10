@@ -50,6 +50,65 @@ class WalletControllerTest {
     @Autowired PasswordEncoder passwords;
 
     @Test
+    void progressAndReceiptsAreScopedToTheWalletOwner() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String sender = signup("receipt-sender-" + suffix + "@example.test");
+        String recipient = signup("receipt-recipient-" + suffix + "@example.test");
+        String outsider = signup("receipt-outsider-" + suffix + "@example.test");
+        UUID senderId = walletId(sender);
+        UUID recipientId = walletId(recipient);
+        mvc.perform(get("/api/wallet/progress").header("Authorization", bearer(sender)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.funded").value(false))
+                .andExpect(jsonPath("$.sent").value(false));
+        MvcResult funded = mvc.perform(post("/api/wallet/topups").header("Authorization", bearer(sender))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":100,\"idempotencyKey\":\"receipt-topup\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String topupId = mapper.readTree(funded.getResponse().getContentAsString()).get("transfer").get("id").asText();
+        mvc.perform(get("/api/wallet/transactions/" + topupId).header("Authorization", bearer(sender)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.kind").value("TOPUP"))
+                .andExpect(jsonPath("$.direction").value("CREDIT"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist());
+        MvcResult sent = mvc.perform(post("/api/wallet/transfers").header("Authorization", bearer(sender))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetAccountId\":\"" + recipientId + "\",\"amount\":100,\"idempotencyKey\":\"receipt-send\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String transferId = mapper.readTree(sent.getResponse().getContentAsString()).get("transfer").get("id").asText();
+        mvc.perform(get("/api/wallet/progress").header("Authorization", bearer(sender)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.funded").value(true))
+                .andExpect(jsonPath("$.sent").value(true));
+        mvc.perform(get("/api/wallet/progress").header("Authorization", bearer(recipient)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.funded").value(false))
+                .andExpect(jsonPath("$.sent").value(false));
+        for (String owner : new String[] {sender, recipient}) {
+            mvc.perform(get("/api/wallet/transactions/" + transferId).header("Authorization", bearer(owner)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.source.id").value(senderId.toString()))
+                    .andExpect(jsonPath("$.target.id").value(recipientId.toString()))
+                    .andExpect(jsonPath("$.amount").value(100)).andExpect(jsonPath("$.kind").value("TRANSFER"));
+        }
+        mvc.perform(get("/api/wallet/transactions/" + transferId).header("Authorization", bearer(outsider)))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/wallet/transactions/" + UUID.randomUUID()).header("Authorization", bearer(sender)))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/wallet/transactions/" + transferId)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/wallet/transactions/" + transferId).header("Authorization", bearer(internalSignup("receipt-staff-" + suffix + "@example.test"))))
+                .andExpect(status().isForbidden());
+        AppUser admin = users.save(new AppUser("receipt-admin-" + suffix + "@example.test",
+                passwords.encode("Long-strong-password-123!"), AppRole.TREASURY_ADMIN));
+        MvcResult corrected = mvc.perform(post("/api/transfers/" + transferId + "/reversal")
+                .header("Authorization", bearer(jwt.issue(admin).value())).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"idempotencyKey\":\"receipt-reversal-" + suffix + "\",\"reason\":\"Receipt regression correction\"}"))
+                .andExpect(status().isCreated()).andReturn();
+        String correctionId = mapper.readTree(corrected.getResponse().getContentAsString()).get("id").asText();
+        mvc.perform(get("/api/wallet/transactions/" + transferId).header("Authorization", bearer(sender)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REVERSED"));
+        mvc.perform(get("/api/wallet/transactions/" + correctionId).header("Authorization", bearer(sender)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.kind").value("REVERSAL"))
+                .andExpect(jsonPath("$.reversalOf").value(transferId));
+        mvc.perform(get("/api/wallet/progress").header("Authorization", bearer(recipient)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.sent").value(false));
+    }
+
+    @Test
     void registrationFundingTransferRetriesAndIsolationUseTheLedger() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String first = signup("first-" + suffix + "@example.test");

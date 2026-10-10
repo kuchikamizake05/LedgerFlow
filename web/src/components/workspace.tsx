@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { FlowMark } from "@/components/flow-mark";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -403,13 +404,16 @@ export function Workspace({ children }: { children: React.ReactNode }) {
       </a>
       <aside ref={mobileSidebar} className={`sidebar ${mobile ? "open" : ""}`}>
         <div className="brand">
-          <strong>
-            LedgerFlow<span className="brand-mark">╱</span>
+          <strong className="operations-wordmark">
+            <FlowMark /> LedgerFlow
           </strong>
           <small>OPERATIONS</small>
         </div>
         <nav id="main-navigation" aria-label="Main navigation">
+          <span className="nav-group-label">Money movement</span>
           {navigation.map(([path, label]) => (
+            <div key={path}>
+            {path === "ledger" && <span className="nav-group-label">Records &amp; oversight</span>}
             <Link
               onClick={closeMobileNavigation}
               key={path}
@@ -419,6 +423,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
               <Icon name={path} />
               {label}
             </Link>
+            </div>
           ))}
         </nav>
         <div className="sidebar-foot">
@@ -444,7 +449,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
             </button>
             <span className="muted">LedgerFlow Indonesia</span>
             <span className="muted">/</span>
-            <strong>Treasury Core</strong>
+            <strong>Operations</strong>
           </div>
           <div className="inline">
             <label className="mode-label">

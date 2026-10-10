@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Copy, LogOut, Wallet as WalletIcon } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { ArrowDownLeft, ArrowDown, ArrowLeftRight, ArrowRight, ArrowUpRight, Copy, Home, LogOut, Plus, ReceiptText, Wallet as WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { money, shortId, WalletSessionUser } from "@/lib/domain";
 import { canReleaseWalletRequestKey } from "@/lib/wallet-operations";
+import { groupWalletActivity } from "@/lib/wallet-activity";
+import { WalletOnboarding } from "@/components/wallet-onboarding";
+import { WalletReceiptDialog } from "@/components/wallet-receipt";
+import type { WalletProgress } from "@/lib/wallet-receipt";
+import { FlowMark } from "@/components/flow-mark";
 
 type WalletAccount = { id: string; name: string; balance: string; frozen?: boolean };
 type Recipient = { id: string; name: string };
@@ -73,21 +78,22 @@ export function WalletAuth({ mode }: { mode: "login" | "register" }) {
   return (
     <main className="wallet-auth">
       <header className="wallet-brand">
-        <Link href="/wallet"><span className="wallet-brand-icon"><WalletIcon size={18} /></span> LedgerFlow Wallet</Link>
+        <Link href="/wallet"><FlowMark /> LedgerFlow</Link>
         <span>SIMULATED FUNDS</span>
       </header>
       <div className="wallet-auth-layout">
         <section className="wallet-introduction" aria-labelledby="wallet-introduction-title">
-          <div className="wallet-intro-symbol" aria-hidden="true"><WalletIcon size={30} /></div>
+          <div className="wallet-intro-symbol" aria-hidden="true"><FlowMark /></div>
           <div className="wallet-eyebrow">A SIMPLE WAY TO SIMULATE</div>
-          <h2 id="wallet-introduction-title">Your wallet.<br /> One clear view.</h2>
-          <p>Keep track of your balance, send to another wallet, and follow every movement.</p>
+          <h2 id="wallet-introduction-title">Small transfers.<br /> Clear possibilities.</h2>
+          <p>A place to explore how money moves. Add a simulated balance, send it to another wallet, and see the ledger come to life.</p>
           <ul className="wallet-intro-features">
             <li><ArrowDownLeft size={18} aria-hidden="true" /><div><strong>Add a simulated balance</strong><span>Start with zero and try a top up.</span></div></li>
             <li><ArrowLeftRight size={18} aria-hidden="true" /><div><strong>Send with confidence</strong><span>Confirm the recipient before transferring.</span></div></li>
             <li><ArrowUpRight size={18} aria-hidden="true" /><div><strong>Follow your activity</strong><span>See incoming and outgoing movements.</span></div></li>
           </ul>
-          <div className="wallet-intro-note">A payment simulation. No real money involved.</div>
+          <div className="wallet-journey" aria-label="How the simulation works"><span>01 · Add funds</span><ArrowUpRight size={18} aria-hidden="true" /><span>02 · Send</span><ArrowUpRight size={18} aria-hidden="true" /><span>03 · Follow</span></div>
+          <div className="wallet-intro-note">Built for exploring. Every balance and transfer is simulated.</div>
         </section>
       <section className="wallet-auth-card">
         <div className="wallet-eyebrow">PERSONAL WALLET</div>
@@ -142,6 +148,18 @@ export function WalletHome() {
   const [pendingOps, setPendingOps] = useState<Record<string, PendingOperation>>({});
   const [pendingStorageReady, setPendingStorageReady] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [progress, setProgress] = useState<WalletProgress | null>(null);
+  const [progressError, setProgressError] = useState("");
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [lastTransactionId, setLastTransactionId] = useState<string | null>(null);
+  const receiptOpener = useRef<HTMLElement | null>(null);
+  async function refreshProgress() {
+    try { setProgress(await request<WalletProgress>("progress")); setProgressError(""); }
+    catch { setProgressError("Progress could not be loaded."); }
+  }
+  function showReceipt(id: string, opener: HTMLElement) { receiptOpener.current = opener; setReceiptId(id); }
+  const [activeSection, setActiveSection] = useState("overview");
 
   useEffect(() => {
     const onExpired = () => {
@@ -155,6 +173,7 @@ export function WalletHome() {
   async function refresh() {
     const me = await request<WalletAccount>("me");
     setAccount(me);
+    void refreshProgress();
     try {
       const operations = readPendingOperations(localStorage.getItem(opStorage(me.id)));
       setPendingOps(operations);
@@ -193,6 +212,7 @@ export function WalletHome() {
         setPendingStorageReady(true);
       } catch { setError("A saved pending request could not be read. Wallet actions are paused to protect your balance."); }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Unable to load wallet."); });
+    request<WalletProgress>("progress").then(value => { if (active) { setProgress(value); setProgressError(""); } }).catch(() => { if (active) setProgressError("Progress could not be loaded."); });
     request<Page>(`history?page=${page}&size=10`).then(entries => {
       if (active) { setHistory(entries); setHistoryError(""); setHistoryLoading(false); }
     }).catch(e => {
@@ -222,8 +242,8 @@ export function WalletHome() {
     if (cause instanceof WalletApiError && canReleaseWalletRequestKey(cause.status)) clearOperation(slot);
   }
   async function topup(event: FormEvent) {
-    event.preventDefault(); setError(""); setNotice(""); setPending(true);
-    try { const payload = { amount: topupAmount, description: "Customer simulator top up" }; const op = operation("topup", payload); await request("topups", { ...payload, idempotencyKey: op.key }); clearOperation("topup"); setTopupAmount(""); setNotice("Simulated top up added to your wallet."); refresh().catch(()=>setError("Top up completed, but the balance could not be refreshed. Reload the wallet to check it.")); }
+    event.preventDefault(); setError(""); setNotice(""); setLastTransactionId(null); setPending(true);
+    try { const payload = { amount: topupAmount, description: "Customer simulator top up" }; const op = operation("topup", payload); const result = await request<{transfer: {id: string}}>("topups", { ...payload, idempotencyKey: op.key }); setLastTransactionId(result.transfer.id); clearOperation("topup"); setTopupAmount(""); setNotice("Simulated top up added to your wallet."); refresh().catch(()=>setError("Top up completed, but the balance could not be refreshed. Reload the wallet to check it.")); }
     catch(e) { rejectKnownOperation("topup", e); setError(e instanceof Error ? e.message : "Top up outcome is unknown. Retry the same request or check history."); }
     finally { setPending(false); }
   }
@@ -248,11 +268,13 @@ export function WalletHome() {
     if (!recipient) return;
     setError("");
     setNotice("");
+    setLastTransactionId(null);
     setPending(true);
     try {
       const payload = { targetAccountId: recipient.id, amount: transferAmount, description: "Wallet transfer" };
       const op = operation("transfer", payload);
-      await request("transfers", { ...payload, idempotencyKey: op.key });
+      const result = await request<{transfer: {id: string}}>("transfers", { ...payload, idempotencyKey: op.key });
+      setLastTransactionId(result.transfer.id);
       clearOperation("transfer");
       setTransferAmount("");
       setRecipientId("");
@@ -283,32 +305,34 @@ export function WalletHome() {
     <main className="wallet-page">
       <header className="wallet-nav">
         <Link href="/wallet" className="wallet-brand-name">
-          <span className="wallet-brand-icon"><WalletIcon size={18} /></span> LedgerFlow Wallet
+          <FlowMark /> LedgerFlow <span className="wallet-pill">SIMULATION</span>
         </Link>
+        <nav className="wallet-section-nav" aria-label="Wallet sections"><a href="#wallet-overview" aria-current={activeSection === "overview" ? "location" : undefined} onClick={() => setActiveSection("overview")}>Overview</a><a href="#wallet-actions" aria-current={activeSection === "actions" ? "location" : undefined} onClick={() => setActiveSection("actions")}>Move funds</a><a href="#wallet-activity" aria-current={activeSection === "activity" ? "location" : undefined} onClick={() => setActiveSection("activity")}>Activity</a></nav>
         <div>
-          <span className="wallet-pill">SIMULATED FUNDS</span>
           <button className="wallet-logout" onClick={logout}><LogOut size={15} /> Sign out</button>
         </div>
       </header>
       <div className="wallet-content">
-        <div className="wallet-page-heading">
-          <div>
-            <div className="wallet-eyebrow">YOUR WALLET</div>
-            <h1>Good to see you</h1>
-            <p>Manage your simulated balance and transfers.</p>
-          </div>
-        </div>
-        <div className="wallet-overview">
+        {account?.frozen && <p className="wallet-error wallet-banner" role="status">This wallet is frozen. Top ups and transfers are unavailable.</p>}
+        {error && <p className="wallet-error wallet-banner" role="alert">{error}</p>}
+        {notice && <div className="wallet-success wallet-banner"><p role="status">{notice}</p>{lastTransactionId && <button type="button" onClick={event => showReceipt(lastTransactionId, event.currentTarget)}>View receipt <ArrowRight size={16} /></button>}</div>}
+        <div className="wallet-overview" id="wallet-overview">
         <section className="wallet-balance-card" aria-label="Wallet balance">
-          <div className="wallet-balance-top">
-            <span>Available balance</span>
-            <span className="wallet-pill wallet-pill-light">SIMULATED</span>
+          <span className="wallet-card-motif"><FlowMark /></span>
+          <span className="wallet-card-badge"><WalletIcon size={12} aria-hidden="true" /> MY WALLET</span>
+          <h1>{account ? `Hi, ${account.name.split("@")[0]}` : "Your wallet"}</h1>
+          <p className="wallet-card-note">Practice funds, never real money.</p>
+          <div className="wallet-balance-top">Available balance</div>
+          <strong className={account && money(account.balance).length > 22 ? "wallet-large-balance" : undefined}>{account ? money(account.balance) : error ? "Unavailable" : "Loading…"}</strong>
+          <div className="wallet-quick-actions" aria-label="Wallet actions">
+            <a className="wallet-send-action" href="#wallet-send" onClick={() => setActiveSection("actions")}><span>Send<span className="wallet-send-long"> money</span></span><span className="wallet-inset-icon"><ArrowRight size={16} /></span></a>
+            <a href="#wallet-topup" onClick={() => setActiveSection("actions")}><span className="wallet-inset-icon"><Plus size={15} /></span>Top up</a>
+            <a href="#wallet-receive" onClick={() => setReceiveOpen(true)}><span className="wallet-inset-icon"><ArrowDown size={15} /></span>Receive</a>
           </div>
-          <strong className={account && money(account.balance).length > 22 ? "wallet-large-balance" : undefined}>{account ? money(account.balance) : "Loading…"}</strong>
-          <div className="wallet-balance-caption"><span className="wallet-status-dot" aria-hidden="true" />{account ? account.frozen ? "Wallet frozen" : "Ready for simulated transfers" : "Connecting to your wallet"}</div>
+          {(account?.frozen || !account) && <div className="wallet-balance-caption">{account?.frozen ? "Wallet frozen" : "Connecting to your wallet"}</div>}
         </section>
-        <section className="wallet-reference" aria-label="Your wallet ID">
-          <div className="wallet-eyebrow">RECEIVE A TRANSFER</div>
+        <details className="wallet-reference" id="wallet-receive" open={receiveOpen} onToggle={event => setReceiveOpen(event.currentTarget.open)}>
+          <summary><span><ArrowDown size={16} aria-hidden="true" /> Receive a transfer</span><Plus size={15} aria-hidden="true" /></summary>
           <h2>Your wallet ID</h2>
           <p>Share this ID with another wallet user.</p>
           <code>{account ? account.id : "Loading wallet ID…"}</code>
@@ -318,13 +342,51 @@ export function WalletHome() {
               <Copy size={14} />{copied ? "Copied" : "Copy ID"}
             </button>
           </div>
-        </section>
+        </details>
+        {account && <WalletOnboarding key={account.id} accountId={account.id} progress={progress} error={progressError} frozen={Boolean(account.frozen)} retry={() => { void refreshProgress(); }} />}
         </div>
-        {account?.frozen && <p className="wallet-error wallet-banner" role="status">This wallet is frozen. Top ups and transfers are unavailable.</p>}
-        {error && <p className="wallet-error wallet-banner" role="alert">{error}</p>}
-        {notice && <p className="wallet-success wallet-banner" role="status">{notice}</p>}
-      <div className="wallet-action-grid">
-        <section className="wallet-panel">
+        <section className="wallet-panel wallet-history" id="wallet-activity">
+          <div className="wallet-history-heading">
+            <div><h2>Recent activity</h2><p>Your personal wallet history</p></div>
+            <span>{history ? `${history.totalElements} ${history.totalElements === 1 ? "transaction" : "transactions"}` : "Activity"}</span>
+          </div>
+          {historyLoading ? (
+            <div className="wallet-empty">Loading activity…</div>
+          ) : historyError ? (
+            <div className="wallet-error" role="alert">Activity could not be loaded: {historyError}</div>
+          ) : !history?.content.length ? (
+            <div className="wallet-empty"><span className="wallet-empty-icon" aria-hidden="true"><ArrowLeftRight size={24} /></span><strong>Your first movement starts here</strong><p>Try a simulated top up, then send to another wallet. Your activity will appear here.</p></div>
+          ) : (
+            <div className="wallet-entries">
+              {groupWalletActivity(history.content).map(group => (
+                <section className="wallet-day-group" key={group.key} aria-label={group.label}>
+                  <h3 className="wallet-day-label"><span>{group.label}</span></h3>
+                  {group.entries.map(entry => (
+                <button type="button" className="wallet-entry" key={entry.id} aria-label={`View ${entry.direction === "CREDIT" ? "received" : "sent"} transaction ${shortId(entry.transferId)}`} onClick={event => showReceipt(entry.transferId, event.currentTarget)}>
+                  <span className={`wallet-entry-icon ${entry.direction === "CREDIT" ? "credit" : "debit"}`}>
+                    {entry.direction === "CREDIT" ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
+                  </span>
+                  <span className="wallet-entry-main">
+                    <strong>{entry.direction === "CREDIT" ? "Money received" : "Money sent"}</strong>
+                    <small>{Number.isNaN(new Date(entry.createdAt).getTime()) ? "Time unavailable" : new Date(entry.createdAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Jakarta", timeStyle: "short" })} · {shortId(entry.transferId)}</small>
+                  </span>
+                  <b className={entry.direction === "CREDIT" ? "wallet-credit" : ""}>{entry.direction === "CREDIT" ? "+" : "−"}{money(entry.amount)}</b>
+                </button>
+                  ))}
+                </section>
+              ))}
+            </div>
+          )}
+          <div className="wallet-pagination">
+            <span>Page {history ? history.page + 1 : page + 1} of {Math.max(1, history?.totalPages ?? 1)}</span>
+            <div>
+              <Button disabled={page === 0 || pending} onClick={() => { setHistoryLoading(true); setHistoryError(""); setPage(current => Math.max(0, current - 1)); }} type="button" variant="outline">Previous</Button>
+              <Button disabled={!history?.hasNext || pending} onClick={() => { setHistoryLoading(true); setHistoryError(""); setPage(current => current + 1); }} type="button" variant="outline">Next</Button>
+            </div>
+          </div>
+        </section>
+      <div className="wallet-action-grid" id="wallet-actions">
+        <section className="wallet-panel" id="wallet-topup">
           <div className="wallet-panel-heading">
             <span className="wallet-action-icon topup-icon"><ArrowDownLeft size={18} /></span>
             <div><h2>Top up</h2><p>Add simulated funds</p></div>
@@ -339,7 +401,7 @@ export function WalletHome() {
           </form>
           <small className="wallet-disclaimer">No real payment is processed. Top ups are for demonstration only.</small>
         </section>
-        <section className="wallet-panel">
+        <section className="wallet-panel" id="wallet-send">
           <div className="wallet-panel-heading">
             <span className="wallet-action-icon transfer-icon"><ArrowLeftRight size={18} /></span>
             <div><h2>Send money</h2><p>Transfer to another wallet</p></div>
@@ -363,43 +425,13 @@ export function WalletHome() {
           <small className="wallet-disclaimer">Confirm the recipient name before sending. Transfers settle immediately.</small>
         </section>
       </div>
-        <section className="wallet-panel wallet-history">
-          <div className="wallet-history-heading">
-            <div><h2>Recent activity</h2><p>Your personal wallet history</p></div>
-            <span>{history?.totalElements ?? 0} {history?.totalElements === 1 ? "transaction" : "transactions"}</span>
-          </div>
-          {historyLoading ? (
-            <div className="wallet-empty">Loading activity…</div>
-          ) : historyError ? (
-            <div className="wallet-error" role="alert">Activity could not be loaded: {historyError}</div>
-          ) : !history?.content.length ? (
-            <div className="wallet-empty"><span className="wallet-empty-icon" aria-hidden="true"><ArrowLeftRight size={24} /></span><strong>Your first movement starts here</strong><p>Try a simulated top up, then send to another wallet. Your activity will appear here.</p></div>
-          ) : (
-            <div className="wallet-entries">
-              {history.content.map(entry => (
-                <div className="wallet-entry" key={entry.id}>
-                  <span className={`wallet-entry-icon ${entry.direction === "CREDIT" ? "credit" : "debit"}`}>
-                    {entry.direction === "CREDIT" ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
-                  </span>
-                  <div className="wallet-entry-main">
-                    <strong>{entry.direction === "CREDIT" ? "Money received" : "Money sent"}</strong>
-                    <small>{new Date(entry.createdAt).toLocaleString("en-GB", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" })} · {shortId(entry.transferId)}</small>
-                  </div>
-                  <b className={entry.direction === "CREDIT" ? "wallet-credit" : ""}>{entry.direction === "CREDIT" ? "+" : "−"}{money(entry.amount)}</b>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="wallet-pagination">
-            <span>Page {history ? history.page + 1 : page + 1} of {Math.max(1, history?.totalPages ?? 1)}</span>
-            <div>
-              <Button disabled={page === 0 || pending} onClick={() => { setHistoryLoading(true); setHistoryError(""); setPage(current => Math.max(0, current - 1)); }} type="button" variant="outline">Previous</Button>
-              <Button disabled={!history?.hasNext || pending} onClick={() => { setHistoryLoading(true); setHistoryError(""); setPage(current => current + 1); }} type="button" variant="outline">Next</Button>
-            </div>
-          </div>
-        </section>
         <footer className="wallet-footer">Balances and transactions are simulated for demonstration purposes.</footer>
       </div>
+      {receiptId && <WalletReceiptDialog key={receiptId} id={receiptId} close={() => setReceiptId(null)} opener={receiptOpener} />}
+      <nav className="wallet-bottom-nav" aria-label="Mobile wallet sections">
+        <a href="#wallet-overview" aria-current={activeSection === "overview" ? "location" : undefined} onClick={() => setActiveSection("overview")}><Home size={20} aria-hidden="true" />Home</a>
+        <a href="#wallet-activity" aria-current={activeSection === "activity" ? "location" : undefined} onClick={() => setActiveSection("activity")}><ReceiptText size={20} aria-hidden="true" />Activity</a>
+      </nav>
     </main>
   );
 }

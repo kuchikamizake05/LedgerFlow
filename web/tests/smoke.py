@@ -70,6 +70,10 @@ with sync_playwright() as p:
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Mobile page overflow"
     page.screenshot(path=str(output / "accounts-mobile.png"), full_page=True)
+    page.set_viewport_size({"width": 768, "height": 1024})
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "Tablet page overflow"
+    page.screenshot(path=str(output / "accounts-tablet.png"), full_page=True)
+    page.set_viewport_size({"width": 390, "height": 844})
     page.get_by_role("button", name="Toggle navigation").click()
     expect(page.get_by_role("link", name="Treasury", exact=True)).to_be_visible()
     page.set_viewport_size({"width": 1440, "height": 1000})

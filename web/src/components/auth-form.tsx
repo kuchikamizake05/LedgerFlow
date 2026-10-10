@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FlowMark } from "@/components/flow-mark";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Eye, EyeOff, LockKeyhole, LoaderCircle } from "lucide-react";
@@ -170,8 +171,8 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
     <main className="auth-page">
       <header className="auth-topbar">
         <Link className="auth-wordmark" href="/auth/login">
-          <span className="auth-mark" />
-          LedgerFlow Engine
+          <FlowMark />
+          LedgerFlow
         </Link>
         <span className="auth-environment">LOCAL DEVELOPMENT</span>
         <Link className="auth-wallet-link" href="/wallet/login">Customer wallet sign in</Link>

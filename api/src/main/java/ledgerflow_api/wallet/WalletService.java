@@ -23,6 +23,8 @@ import ledgerflow_api.auth.UserResponse;
 import ledgerflow_api.common.PageResponse;
 import ledgerflow_api.transfer.CreateTransferRequest;
 import ledgerflow_api.transfer.LedgerEntryRepository;
+import ledgerflow_api.transfer.TransferRepository;
+import ledgerflow_api.transfer.LedgerDirection;
 import ledgerflow_api.transfer.LedgerEntryResponse;
 import ledgerflow_api.transfer.TransferExecutionResult;
 import ledgerflow_api.transfer.TransferService;
@@ -44,10 +46,11 @@ public class WalletService {
     private final TransferService transfers;
     private final LedgerEntryRepository ledger;
     private final AuditService audit;
+    private final TransferRepository transferRecords;
     private final boolean topupsEnabled;
 
     public WalletService(AppUserRepository users, AccountRepository accounts, PasswordEncoder passwords,
-            JwtService jwt, TransferService transfers, LedgerEntryRepository ledger, AuditService audit,
+            JwtService jwt, TransferService transfers, LedgerEntryRepository ledger, AuditService audit, TransferRepository transferRecords,
             @Value("${ledgerflow.simulator.topups-enabled:false}") boolean topupsEnabled) {
         this.users = users;
         this.accounts = accounts;
@@ -56,6 +59,7 @@ public class WalletService {
         this.transfers = transfers;
         this.ledger = ledger;
         this.audit = audit;
+        this.transferRecords = transferRecords;
         this.topupsEnabled = topupsEnabled;
     }
 
@@ -151,6 +155,37 @@ public class WalletService {
                 PageRequest.of(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))))
                 .map(LedgerEntryResponse::from);
         return PageResponse.from(results);
+    }
+
+    @Transactional(readOnly = true)
+    public WalletProgressResponse progress() {
+        UUID accountId = ownedAccountId(customerId());
+        return new WalletProgressResponse(
+                transferRecords.existsBySourceAccountIdAndTargetAccountIdAndReversalOfIsNull(
+                        TransferService.SYSTEM_TREASURY_ID, accountId),
+                transferRecords.existsBySourceAccountIdAndReversalOfIsNull(accountId));
+    }
+
+    @Transactional(readOnly = true)
+    public WalletReceiptResponse receipt(UUID id) {
+        UUID accountId = ownedAccountId(customerId());
+        var transfer = transferRecords.findById(id)
+                .filter(candidate -> accountId.equals(candidate.getSourceAccountId())
+                        || accountId.equals(candidate.getTargetAccountId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet transaction not found"));
+        String kind = transfer.getReversalOf() != null ? "REVERSAL"
+                : TransferService.SYSTEM_TREASURY_ID.equals(transfer.getSourceAccountId()) ? "TOPUP" : "TRANSFER";
+        return new WalletReceiptResponse(transfer.getId(), kind,
+                accountId.equals(transfer.getSourceAccountId()) ? LedgerDirection.DEBIT : LedgerDirection.CREDIT,
+                transfer.getAmount(), transfer.getStatus(), transfer.getCreatedAt(),
+                participant(transfer.getSourceAccountId()), participant(transfer.getTargetAccountId()),
+                transfer.getDescription(), transfer.getReversalOf());
+    }
+
+    private WalletReceiptResponse.Participant participant(UUID id) {
+        String name = TransferService.SYSTEM_TREASURY_ID.equals(id) ? "Simulator treasury"
+                : accounts.findById(id).map(Account::getName).orElse("Account unavailable");
+        return new WalletReceiptResponse.Participant(id, name);
     }
 
     private Account owned(UUID userId) {

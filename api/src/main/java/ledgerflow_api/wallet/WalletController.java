@@ -58,6 +58,16 @@ public class WalletController {
         return service.transfer(request);
     }
 
+    @GetMapping("/progress")
+    public WalletProgressResponse progress() {
+        return service.progress();
+    }
+
+    @GetMapping("/transactions/{id}")
+    public WalletReceiptResponse receipt(@PathVariable UUID id) {
+        return service.receipt(id);
+    }
+
     @GetMapping("/history")
     public PageResponse<LedgerEntryResponse> history(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {

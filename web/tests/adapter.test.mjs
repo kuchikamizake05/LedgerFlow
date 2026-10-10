@@ -170,6 +170,11 @@ test("wallet adapter allows only customer wallet endpoints and forwards idempote
   assert.equal(forwarded.options.body, body, "idempotency key and payload must survive the adapter unchanged");
   assert.equal(forwarded.options.headers.Authorization, "Bearer customer-token");
   assert.deepEqual(await response.json(), { id, amount: "12.3", status: "COMPLETED" });
+  for (const path of [["progress"], ["transactions", id]]) {
+    const read = new NextRequest("http://localhost/api/wallet/" + path.join("/"), { headers: { cookie: "ledgerflow_customer_access_token=customer-token" } });
+    assert.equal((await route.GET(read, { params: Promise.resolve({ path }) })).status, 200);
+    assert.equal(forwarded.url, "http://127.0.0.1:8081/api/wallet/" + path.join("/"));
+  }
   const noCustomer = new NextRequest("http://localhost/api/wallet/history");
   assert.equal((await route.GET(noCustomer, { params: Promise.resolve({ path: ["history"] }) })).status, 401);
   const forbiddenPath = await route.GET(new NextRequest("http://localhost/api/wallet/accounts"), { params: Promise.resolve({ path: ["accounts"] }) });
